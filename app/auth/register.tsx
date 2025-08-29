@@ -67,35 +67,6 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleDebugShowUsers = async () => {
-    try {
-      const users = await supabaseService.getAllUsers();
-      const userList = users.map(u => `${u.name} (${u.username})`).join('\n');
-      Alert.alert('All Users', userList || 'No users found');
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      Alert.alert('Error', 'Failed to fetch users');
-    }
-  };
-
-  const handleDebugClearData = async () => {
-    Alert.alert(
-      'Clear All Data',
-      'This will delete ALL users, channels, and messages. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await supabaseService.clearAllData();
-            Alert.alert(success ? 'Success' : 'Error', success ? 'All data cleared' : 'Failed to clear data');
-          }
-        }
-      ]
-    );
-  };
-
   return (
     <KeyboardAvoidingView 
       style={commonStyles.container} 
@@ -144,24 +115,18 @@ export default function RegisterScreen() {
           style={buttonStyles.primary}
         />
 
-        {/* Debug Tools */}
-        <View style={{ marginTop: 40, gap: 8 }}>
+        <View style={[commonStyles.row, { marginTop: 24, justifyContent: 'center' }]}>
+          <Text style={commonStyles.textSecondary}>Already have an account? </Text>
           <Button
-            text="Debug: Show All Users"
-            onPress={handleDebugShowUsers}
-            style={{ backgroundColor: colors.backgroundAlt }}
-            textStyle={{ color: colors.text, fontSize: 12 }}
-          />
-          <Button
-            text="Debug: Clear All Data"
-            onPress={handleDebugClearData}
-            style={{ backgroundColor: '#ff4444' }}
-            textStyle={{ color: 'white', fontSize: 12 }}
+            text="Sign In"
+            onPress={() => router.push('/auth/login')}
+            style={{ backgroundColor: 'transparent', paddingVertical: 0, paddingHorizontal: 0, minHeight: 'auto' }}
+            textStyle={{ color: colors.primary, fontWeight: '600' }}
           />
         </View>
 
         {/* Info */}
-        <View style={{ marginTop: 16, padding: 16, backgroundColor: colors.backgroundAlt, borderRadius: 8 }}>
+        <View style={{ marginTop: 32, padding: 16, backgroundColor: colors.backgroundAlt, borderRadius: 8 }}>
           <Text style={[commonStyles.textSecondary, { fontSize: 12, textAlign: 'center' }]}>
             Usernames are unique across all devices. The @ symbol will be added automatically if not provided.
           </Text>
