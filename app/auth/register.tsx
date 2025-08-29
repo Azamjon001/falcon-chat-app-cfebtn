@@ -34,10 +34,9 @@ export default function RegisterScreen() {
 
     const formattedUsername = username.startsWith('@') ? username : `@${username}`;
     
-    // Check if username already exists
-    const existingUsers = storage.searchUsers(formattedUsername);
-    if (existingUsers.length > 0) {
-      Alert.alert('Error', 'Username already exists');
+    // Check if username is unique
+    if (!storage.isUsernameUnique(formattedUsername)) {
+      Alert.alert('Error', 'This username is already taken. Please choose a different one.');
       return;
     }
 

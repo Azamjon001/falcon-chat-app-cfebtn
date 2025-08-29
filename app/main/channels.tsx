@@ -1,16 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import Button from '../../components/Button';
 import Icon from '../../components/Icon';
+import PromptModal from '../../components/PromptModal';
 import { storage } from '../../data/storage';
 import { Channel } from '../../types/User';
 
 export default function ChannelsScreen() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadChannels();
@@ -31,26 +33,26 @@ export default function ChannelsScreen() {
   };
 
   const handleCreateChannel = () => {
-    Alert.prompt(
-      'Create Channel',
-      'Enter channel name:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Create',
-          onPress: (channelName) => {
-            if (channelName && channelName.trim()) {
-              const channel = storage.createChannel(channelName.trim());
-              if (channel) {
-                console.log('Channel created:', channel.name);
-                loadChannels();
-              }
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
+    console.log('Opening create channel modal');
+    setShowCreateModal(true);
+  };
+
+  const handleCreateChannelConfirm = (channelName: string) => {
+    console.log('Creating channel with name:', channelName);
+    setShowCreateModal(false);
+    
+    if (channelName && channelName.trim()) {
+      const channel = storage.createChannel(channelName.trim());
+      if (channel) {
+        console.log('Channel created:', channel.name);
+        loadChannels();
+      }
+    }
+  };
+
+  const handleCreateChannelCancel = () => {
+    console.log('Create channel cancelled');
+    setShowCreateModal(false);
   };
 
   const handleChannelPress = (channel: Channel) => {
@@ -119,6 +121,17 @@ export default function ChannelsScreen() {
           )}
         </ScrollView>
       </View>
+
+      <PromptModal
+        visible={showCreateModal}
+        title="Create Channel"
+        message="Enter channel name:"
+        placeholder="Channel name"
+        confirmText="Create"
+        cancelText="Cancel"
+        onConfirm={handleCreateChannelConfirm}
+        onCancel={handleCreateChannelCancel}
+      />
     </View>
   );
 }

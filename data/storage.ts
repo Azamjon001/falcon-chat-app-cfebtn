@@ -22,6 +22,14 @@ class Storage {
     return user;
   }
 
+  // Check if username is unique
+  isUsernameUnique(username: string): boolean {
+    const formattedUsername = username.startsWith('@') ? username : `@${username}`;
+    const existingUser = this.users.find(u => u.username.toLowerCase() === formattedUsername.toLowerCase());
+    console.log('Checking username uniqueness:', formattedUsername, 'exists:', !!existingUser);
+    return !existingUser;
+  }
+
   loginUser(username: string, password: string): User | null {
     console.log('Attempting login:', username);
     const formattedUsername = username.startsWith('@') ? username : `@${username}`;
@@ -42,6 +50,21 @@ class Storage {
   logoutUser(): void {
     console.log('User logged out');
     this.currentUser = null;
+  }
+
+  // Update user profile
+  updateUserProfile(updates: Partial<Pick<User, 'name' | 'avatar' | 'backgroundImage'>>): boolean {
+    if (!this.currentUser) return false;
+    
+    console.log('Updating user profile:', updates);
+    const userIndex = this.users.findIndex(u => u.id === this.currentUser!.id);
+    if (userIndex !== -1) {
+      this.users[userIndex] = { ...this.users[userIndex], ...updates };
+      this.currentUser = { ...this.currentUser, ...updates };
+      console.log('Profile updated successfully');
+      return true;
+    }
+    return false;
   }
 
   searchUsers(query: string): User[] {
@@ -92,10 +115,21 @@ class Storage {
   }
 
   // Message methods
-  sendMessage(channelId: string, content: string, type: 'text' | 'voice' | 'file' = 'text'): Message | null {
+  sendMessage(
+    channelId: string, 
+    content: string, 
+    type: 'text' | 'voice' | 'file' | 'image' = 'text',
+    options?: {
+      fileName?: string;
+      fileSize?: number;
+      duration?: number;
+      fileUri?: string;
+      mimeType?: string;
+    }
+  ): Message | null {
     if (!this.currentUser) return null;
     
-    console.log('Sending message:', { channelId, content, type });
+    console.log('Sending message:', { channelId, content, type, options });
     const message: Message = {
       id: Date.now().toString(),
       channelId,
@@ -103,6 +137,7 @@ class Storage {
       content,
       type,
       timestamp: new Date(),
+      ...options,
     };
     this.messages.push(message);
     return message;

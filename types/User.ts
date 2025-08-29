@@ -5,6 +5,7 @@ export interface User {
   username: string; // includes @ symbol
   password: string;
   avatar?: string;
+  backgroundImage?: string;
   createdAt: Date;
 }
 
@@ -22,9 +23,11 @@ export interface Message {
   channelId: string;
   userId: string;
   content: string;
-  type: 'text' | 'voice' | 'file';
+  type: 'text' | 'voice' | 'file' | 'image';
   timestamp: Date;
   fileName?: string;
   fileSize?: number;
-  duration?: number; // for voice messages
+  duration?: number; // for voice messages in seconds
+  fileUri?: string; // for files and images
+  mimeType?: string;
 }

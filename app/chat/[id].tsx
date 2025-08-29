@@ -1,10 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import TextInput from '../../components/TextInput';
 import Icon from '../../components/Icon';
+import VoiceRecorder from '../../components/VoiceRecorder';
+import ImagePickerButton from '../../components/ImagePicker';
 import { storage } from '../../data/storage';
 import { Message, Channel } from '../../types/User';
 
@@ -14,6 +17,7 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState('');
   const [channel, setChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAttachmentOptions, setShowAttachmentOptions] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -55,32 +59,97 @@ export default function ChatScreen() {
     if (message) {
       setMessages(prev => [...prev, message]);
       setNewMessage('');
-      
-      // Scroll to bottom after sending message
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scrollToBottom();
     }
   };
 
-  const handleVoiceMessage = () => {
-    Alert.alert(
-      'Voice Message',
-      'Voice messaging feature will be implemented in a future update.',
-      [{ text: 'OK' }]
+  const handleVoiceRecordingComplete = (uri: string, duration: number) => {
+    if (!id) return;
+    
+    console.log('Voice recording complete:', { uri, duration });
+    const message = storage.sendMessage(
+      id, 
+      `Voice message (${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')})`,
+      'voice',
+      { fileUri: uri, duration, mimeType: 'audio/m4a' }
     );
+    
+    if (message) {
+      setMessages(prev => [...prev, message]);
+      scrollToBottom();
+    }
   };
 
-  const handleFileShare = () => {
-    Alert.alert(
-      'File Sharing',
-      'File sharing feature will be implemented in a future update.',
-      [{ text: 'OK' }]
+  const handleImageSelected = (uri: string) => {
+    if (!id) return;
+    
+    console.log('Image selected for sharing:', uri);
+    const message = storage.sendMessage(
+      id,
+      'Photo',
+      'image',
+      { fileUri: uri, mimeType: 'image/jpeg' }
     );
+    
+    if (message) {
+      setMessages(prev => [...prev, message]);
+      scrollToBottom();
+      setShowAttachmentOptions(false);
+    }
+  };
+
+  const handleFileShare = async () => {
+    try {
+      console.log('Opening document picker');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets[0] && id) {
+        const file = result.assets[0];
+        console.log('File selected:', file);
+        
+        const message = storage.sendMessage(
+          id,
+          file.name,
+          'file',
+          {
+            fileUri: file.uri,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.mimeType || 'application/octet-stream'
+          }
+        );
+        
+        if (message) {
+          setMessages(prev => [...prev, message]);
+          scrollToBottom();
+          setShowAttachmentOptions(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking file:', error);
+      Alert.alert('Error', 'Failed to select file');
+    }
+  };
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
   };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
   };
 
   const renderMessage = (message: Message) => {
@@ -111,6 +180,63 @@ export default function ChatScreen() {
             borderBottomLeftRadius: isOwnMessage ? 16 : 4,
           }}
         >
+          {message.type === 'image' && message.fileUri && (
+            <Image
+              source={{ uri: message.fileUri }}
+              style={{
+                width: 200,
+                height: 200,
+                borderRadius: 8,
+                marginBottom: 8,
+                resizeMode: 'cover',
+              }}
+            />
+          )}
+          
+          {message.type === 'voice' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Icon 
+                name="play-circle-outline" 
+                size={24} 
+                color={isOwnMessage ? 'white' : colors.primary} 
+              />
+              <Text style={{
+                marginLeft: 8,
+                color: isOwnMessage ? 'rgba(255,255,255,0.8)' : colors.textSecondary,
+                fontSize: 14,
+              }}>
+                {message.duration ? `${Math.floor(message.duration / 60)}:${(message.duration % 60).toString().padStart(2, '0')}` : 'Voice message'}
+              </Text>
+            </View>
+          )}
+          
+          {message.type === 'file' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Icon 
+                name="document-outline" 
+                size={24} 
+                color={isOwnMessage ? 'white' : colors.primary} 
+              />
+              <View style={{ marginLeft: 8, flex: 1 }}>
+                <Text style={{
+                  color: isOwnMessage ? 'white' : colors.text,
+                  fontSize: 14,
+                  fontWeight: '500',
+                }}>
+                  {message.fileName}
+                </Text>
+                {message.fileSize && (
+                  <Text style={{
+                    color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+                    fontSize: 12,
+                  }}>
+                    {formatFileSize(message.fileSize)}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+          
           <Text
             style={{
               color: isOwnMessage ? 'white' : colors.text,
@@ -198,6 +324,49 @@ export default function ChatScreen() {
         )}
       </ScrollView>
 
+      {/* Attachment Options */}
+      {showAttachmentOptions && (
+        <View style={{
+          flexDirection: 'row',
+          paddingHorizontal: 20,
+          paddingVertical: 12,
+          backgroundColor: colors.backgroundAlt,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          gap: 12,
+        }}>
+          <ImagePickerButton
+            onImageSelected={handleImageSelected}
+            title="Photo"
+            icon="image-outline"
+            style={{ flex: 1 }}
+          />
+          <TouchableOpacity
+            onPress={handleFileShare}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 12,
+              backgroundColor: colors.background,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Icon name="document-outline" size={20} color={colors.primary} />
+            <Text style={{ 
+              marginLeft: 8, 
+              color: colors.primary, 
+              fontWeight: '500' 
+            }}>
+              File
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Message Input */}
       <View style={{
         flexDirection: 'row',
@@ -209,8 +378,14 @@ export default function ChatScreen() {
         borderTopColor: colors.border,
         gap: 12,
       }}>
-        <TouchableOpacity onPress={handleFileShare}>
-          <Icon name="attach-outline" size={24} color={colors.primary} />
+        <TouchableOpacity 
+          onPress={() => setShowAttachmentOptions(!showAttachmentOptions)}
+        >
+          <Icon 
+            name={showAttachmentOptions ? "close" : "attach-outline"} 
+            size={24} 
+            color={colors.primary} 
+          />
         </TouchableOpacity>
         
         <View style={commonStyles.flex1}>
@@ -228,9 +403,9 @@ export default function ChatScreen() {
           />
         </View>
 
-        <TouchableOpacity onPress={handleVoiceMessage}>
-          <Icon name="mic-outline" size={24} color={colors.primary} />
-        </TouchableOpacity>
+        <VoiceRecorder
+          onRecordingComplete={handleVoiceRecordingComplete}
+        />
 
         <TouchableOpacity 
           onPress={sendMessage}

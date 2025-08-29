@@ -1,14 +1,15 @@
 
-import React from 'react';
-import { View, Text, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Alert, Image, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { commonStyles, buttonStyles, colors } from '../../styles/commonStyles';
 import Button from '../../components/Button';
 import Icon from '../../components/Icon';
+import ImagePickerButton from '../../components/ImagePicker';
 import { storage } from '../../data/storage';
 
 export default function ProfileScreen() {
-  const currentUser = storage.getCurrentUser();
+  const [currentUser, setCurrentUser] = useState(storage.getCurrentUser());
 
   const handleLogout = () => {
     Alert.alert(
@@ -29,6 +30,28 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleProfileImageUpdate = (uri: string) => {
+    console.log('Updating profile image:', uri);
+    const success = storage.updateUserProfile({ avatar: uri });
+    if (success) {
+      setCurrentUser(storage.getCurrentUser());
+      Alert.alert('Success', 'Profile picture updated!');
+    } else {
+      Alert.alert('Error', 'Failed to update profile picture');
+    }
+  };
+
+  const handleBackgroundImageUpdate = (uri: string) => {
+    console.log('Updating background image:', uri);
+    const success = storage.updateUserProfile({ backgroundImage: uri });
+    if (success) {
+      setCurrentUser(storage.getCurrentUser());
+      Alert.alert('Success', 'Background image updated!');
+    } else {
+      Alert.alert('Error', 'Failed to update background image');
+    }
+  };
+
   if (!currentUser) {
     return (
       <View style={[commonStyles.container, commonStyles.center]}>
@@ -43,24 +66,85 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View style={commonStyles.container}>
-      <View style={[commonStyles.content, { paddingTop: 60 }]}>
-        <Text style={commonStyles.title}>Profile</Text>
-
-        <View style={[commonStyles.center, { marginVertical: 40 }]}>
+    <ScrollView style={commonStyles.container}>
+      {/* Background Image Section */}
+      <View style={{ 
+        height: 200, 
+        backgroundColor: colors.backgroundAlt,
+        position: 'relative',
+      }}>
+        {currentUser.backgroundImage ? (
+          <Image 
+            source={{ uri: currentUser.backgroundImage }} 
+            style={{ 
+              width: '100%', 
+              height: '100%',
+              resizeMode: 'cover',
+            }}
+          />
+        ) : (
           <View style={{
-            width: 80,
-            height: 80,
-            borderRadius: 40,
+            flex: 1,
+            backgroundColor: colors.primary,
+            opacity: 0.1,
+          }} />
+        )}
+        
+        {/* Background Image Picker */}
+        <View style={{
+          position: 'absolute',
+          top: 60,
+          right: 20,
+        }}>
+          <ImagePickerButton
+            onImageSelected={handleBackgroundImageUpdate}
+            title="Background"
+            icon="image-outline"
+            style={{
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              borderColor: 'rgba(255,255,255,0.3)',
+            }}
+          />
+        </View>
+      </View>
+
+      <View style={[commonStyles.content, { marginTop: -60 }]}>
+        {/* Profile Picture Section */}
+        <View style={[commonStyles.center, { marginBottom: 40 }]}>
+          <View style={{
+            width: 120,
+            height: 120,
+            borderRadius: 60,
             backgroundColor: colors.primary,
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: 16,
+            borderWidth: 4,
+            borderColor: colors.background,
+            overflow: 'hidden',
           }}>
-            <Text style={{ color: 'white', fontWeight: '700', fontSize: 32 }}>
-              {currentUser.name.charAt(0).toUpperCase()}
-            </Text>
+            {currentUser.avatar ? (
+              <Image 
+                source={{ uri: currentUser.avatar }} 
+                style={{ 
+                  width: '100%', 
+                  height: '100%',
+                  resizeMode: 'cover',
+                }}
+              />
+            ) : (
+              <Text style={{ color: 'white', fontWeight: '700', fontSize: 48 }}>
+                {currentUser.name.charAt(0).toUpperCase()}
+              </Text>
+            )}
           </View>
+          
+          <ImagePickerButton
+            onImageSelected={handleProfileImageUpdate}
+            title="Change Photo"
+            icon="camera-outline"
+            style={{ marginBottom: 16 }}
+          />
           
           <Text style={[commonStyles.subtitle, { textAlign: 'center' }]}>
             {currentUser.name}
@@ -70,6 +154,7 @@ export default function ProfileScreen() {
           </Text>
         </View>
 
+        {/* Profile Information Cards */}
         <View style={commonStyles.card}>
           <View style={commonStyles.row}>
             <Icon name="person-outline" size={24} color={colors.primary} />
@@ -102,7 +187,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <View style={{ marginTop: 40 }}>
+        <View style={{ marginTop: 40, marginBottom: 40 }}>
           <Button
             text="Logout"
             onPress={handleLogout}
@@ -110,6 +195,6 @@ export default function ProfileScreen() {
           />
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }

@@ -1,4 +1,5 @@
-import { Stack, useGlobalSearchParams } from 'expo-router';
+
+import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, SafeAreaView } from 'react-native';
@@ -10,7 +11,6 @@ const STORAGE_KEY = 'emulated_device';
 
 export default function RootLayout() {
   const actualInsets = useSafeAreaInsets();
-  const { emulate } = useGlobalSearchParams<{ emulate?: string }>();
   const [storedEmulate, setStoredEmulate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,19 +18,13 @@ export default function RootLayout() {
     setupErrorLogging();
 
     if (Platform.OS === 'web') {
-      // If there's a new emulate parameter, store it
-      if (emulate) {
-        localStorage.setItem(STORAGE_KEY, emulate);
-        setStoredEmulate(emulate);
-      } else {
-        // If no emulate parameter, try to get from localStorage
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          setStoredEmulate(stored);
-        }
+      // Try to get from localStorage
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        setStoredEmulate(stored);
       }
     }
-  }, [emulate]);
+  }, []);
 
   let insetsToUse = actualInsets;
 
@@ -40,9 +34,8 @@ export default function RootLayout() {
       android: { top: 40, bottom: 0, left: 0, right: 0 },
     };
 
-    // Use stored emulate value if available, otherwise use the current emulate parameter
-    const deviceToEmulate = storedEmulate || emulate;
-    insetsToUse = deviceToEmulate ? simulatedInsets[deviceToEmulate as keyof typeof simulatedInsets] || actualInsets : actualInsets;
+    // Use stored emulate value
+    insetsToUse = storedEmulate ? simulatedInsets[storedEmulate as keyof typeof simulatedInsets] || actualInsets : actualInsets;
   }
 
   return (
@@ -54,12 +47,7 @@ export default function RootLayout() {
           paddingRight: insetsToUse.right,
        }]}>
         <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'default',
-          }}
-        />
+        <Slot />
       </SafeAreaView>
     </SafeAreaProvider>
   );
