@@ -520,17 +520,21 @@ class SupabaseService {
     }
   }
 
-  // Real-time message subscription
+  // Real-time message subscription - FIXED VERSION
   subscribeToMessages(channelId: string, onMessage: (message: Message) => void): () => void {
-    console.log('Subscribing to messages for channel:', channelId);
+    console.log('Setting up real-time subscription for channel:', channelId);
     
     // Clean up existing subscription for this channel
     if (this.messageSubscriptions.has(channelId)) {
+      console.log('Cleaning up existing subscription for channel:', channelId);
       this.messageSubscriptions.get(channelId).unsubscribe();
     }
 
+    // Create a unique channel name to avoid conflicts
+    const channelName = `messages_${channelId}_${Date.now()}`;
+    
     const subscription = supabase
-      .channel(`messages:${channelId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -540,34 +544,43 @@ class SupabaseService {
           filter: `chat_id=eq.${channelId}`
         },
         (payload) => {
-          console.log('New message received via real-time:', payload.new);
-          const dbMessage = payload.new as DatabaseMessage;
+          console.log('Real-time message received:', payload);
           
-          const message: Message = {
-            id: dbMessage.id,
-            channelId: dbMessage.chat_id,
-            userId: dbMessage.sender_id,
-            content: dbMessage.text || '',
-            type: dbMessage.type as 'text' | 'voice' | 'file' | 'image',
-            timestamp: new Date(dbMessage.created_at),
-            fileName: dbMessage.file_name || undefined,
-            duration: dbMessage.duration_sec || undefined,
-            fileUri: dbMessage.attachment_url || undefined,
-            mimeType: dbMessage.mime_type || undefined
-          };
+          if (payload.new) {
+            const dbMessage = payload.new as DatabaseMessage;
+            
+            const message: Message = {
+              id: dbMessage.id,
+              channelId: dbMessage.chat_id,
+              userId: dbMessage.sender_id,
+              content: dbMessage.text || '',
+              type: dbMessage.type as 'text' | 'voice' | 'file' | 'image',
+              timestamp: new Date(dbMessage.created_at),
+              fileName: dbMessage.file_name || undefined,
+              duration: dbMessage.duration_sec || undefined,
+              fileUri: dbMessage.attachment_url || undefined,
+              mimeType: dbMessage.mime_type || undefined
+            };
 
-          onMessage(message);
+            console.log('Processed message for callback:', message);
+            onMessage(message);
+          }
         }
       )
       .subscribe((status) => {
-        console.log('Real-time subscription status:', status);
+        console.log('Real-time subscription status for channel', channelId, ':', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to real-time updates for channel:', channelId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Real-time subscription error for channel:', channelId);
+        }
       });
 
     this.messageSubscriptions.set(channelId, subscription);
 
     // Return unsubscribe function
     return () => {
-      console.log('Unsubscribing from messages for channel:', channelId);
+      console.log('Unsubscribing from real-time updates for channel:', channelId);
       subscription.unsubscribe();
       this.messageSubscriptions.delete(channelId);
     };
@@ -591,21 +604,27 @@ class SupabaseService {
       return null;
     }
     
-    console.log('Sending message:', { channelId, content, type });
+    console.log('Sending message:', { channelId, content, type, options });
     
     try {
+      const messageData: any = {
+        chat_id: channelId,
+        sender_id: this.currentUser.id,
+        type,
+        text: content
+      };
+
+      // Add optional fields if provided
+      if (options?.fileUri) messageData.attachment_url = options.fileUri;
+      if (options?.fileName) messageData.file_name = options.fileName;
+      if (options?.mimeType) messageData.mime_type = options.mimeType;
+      if (options?.duration) messageData.duration_sec = options.duration;
+
+      console.log('Message data to insert:', messageData);
+
       const { data, error } = await supabase
         .from('messages')
-        .insert({
-          chat_id: channelId,
-          sender_id: this.currentUser.id,
-          type,
-          text: content,
-          attachment_url: options?.fileUri,
-          file_name: options?.fileName,
-          mime_type: options?.mimeType,
-          duration_sec: options?.duration
-        })
+        .insert(messageData)
         .select()
         .single();
 
@@ -627,7 +646,7 @@ class SupabaseService {
         mimeType: data.mime_type || undefined
       };
 
-      console.log('Message sent successfully:', message.id);
+      console.log('Message sent successfully:', message);
       return message;
     } catch (error) {
       console.error('Exception sending message:', error);
@@ -636,6 +655,8 @@ class SupabaseService {
   }
 
   async getMessages(channelId: string): Promise<Message[]> {
+    console.log('Fetching messages for channel:', channelId);
+    
     try {
       const { data, error } = await supabase
         .from('messages')
@@ -647,6 +668,8 @@ class SupabaseService {
         console.error('Error fetching messages:', error);
         return [];
       }
+
+      console.log('Raw messages from database:', data);
 
       const messages: Message[] = data.map(dbMessage => ({
         id: dbMessage.id,
@@ -661,6 +684,7 @@ class SupabaseService {
         mimeType: dbMessage.mime_type || undefined
       }));
 
+      console.log('Processed messages:', messages);
       return messages;
     } catch (error) {
       console.error('Exception fetching messages:', error);

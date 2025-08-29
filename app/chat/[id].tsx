@@ -10,6 +10,7 @@ import VoiceRecorder from '../../components/VoiceRecorder';
 import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
 import { Message, Channel } from '../../types/User';
 import { supabaseService } from '../../services/supabaseService';
+import { debugRealtime } from '../../utils/debugUtils';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,8 +42,14 @@ export default function ChatScreen() {
     
     try {
       const messageList = await supabaseService.getMessages(id);
+      console.log('Loaded messages count:', messageList.length);
+      
+      // Debug each message
+      messageList.forEach(msg => {
+        debugRealtime.logMessageData(msg);
+      });
+      
       setMessages(messageList);
-      console.log('Messages loaded:', messageList.length);
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -54,16 +61,18 @@ export default function ChatScreen() {
   const setupRealtimeSubscription = useCallback(() => {
     if (!id) return;
 
-    console.log('Setting up real-time subscription for channel:', id);
+    console.log('=== Setting up real-time subscription for channel:', id, '===');
     
     // Clean up existing subscription
     if (unsubscribeRef.current) {
+      console.log('Cleaning up existing subscription');
       unsubscribeRef.current();
     }
 
     // Set up new subscription
     unsubscribeRef.current = supabaseService.subscribeToMessages(id, (newMessage) => {
-      console.log('Received real-time message:', newMessage.id, 'from user:', newMessage.userId);
+      console.log('=== REAL-TIME MESSAGE RECEIVED ===');
+      debugRealtime.logMessageData(newMessage);
       
       setMessages(prev => {
         // Check if message already exists to avoid duplicates
@@ -108,10 +117,14 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
-      console.log('Sending text message:', messageContent);
+      console.log('=== SENDING TEXT MESSAGE ===');
+      console.log('Content:', messageContent);
+      console.log('Channel ID:', id);
+      
       const message = await supabaseService.sendMessage(id, messageContent, 'text');
       if (message) {
-        console.log('Text message sent successfully, real-time will handle the update');
+        console.log('Text message sent successfully');
+        debugRealtime.logMessageData(message);
       } else {
         console.error('Failed to send text message');
         Alert.alert('Error', 'Failed to send message');
@@ -129,7 +142,9 @@ export default function ChatScreen() {
   const handleVoiceRecordingComplete = async (uri: string, duration: number) => {
     if (!id) return;
 
-    console.log('Voice recording completed:', { uri, duration });
+    console.log('=== SENDING VOICE MESSAGE ===');
+    console.log('URI:', uri);
+    console.log('Duration:', duration);
     setSending(true);
 
     try {
@@ -140,7 +155,8 @@ export default function ChatScreen() {
       });
       
       if (message) {
-        console.log('Voice message sent successfully, real-time will handle the update');
+        console.log('Voice message sent successfully');
+        debugRealtime.logMessageData(message);
       } else {
         console.error('Failed to send voice message');
         Alert.alert('Error', 'Failed to send voice message');
@@ -164,7 +180,10 @@ export default function ChatScreen() {
   ) => {
     if (!id) return;
 
-    console.log('File selected:', { uri, type, options });
+    console.log('=== SENDING FILE/IMAGE ===');
+    console.log('URI:', uri);
+    console.log('Type:', type);
+    console.log('Options:', options);
     setSending(true);
 
     try {
@@ -177,7 +196,8 @@ export default function ChatScreen() {
       });
       
       if (message) {
-        console.log(`${type} sent successfully, real-time will handle the update`);
+        console.log(`${type} sent successfully`);
+        debugRealtime.logMessageData(message);
       } else {
         console.error(`Failed to send ${type}`);
         Alert.alert('Error', `Failed to send ${type}`);
@@ -211,6 +231,13 @@ export default function ChatScreen() {
     const currentUser = supabaseService.getCurrentUser();
     const isOwnMessage = message.userId === currentUser?.id;
 
+    console.log('Rendering message:', {
+      id: message.id,
+      type: message.type,
+      fileUri: message.fileUri,
+      content: message.content
+    });
+
     return (
       <View
         key={message.id}
@@ -241,13 +268,59 @@ export default function ChatScreen() {
           />
         )}
 
-        {message.type === 'image' && message.fileUri && (
+        {message.type === 'image' && (
           <View>
-            <Image 
-              source={{ uri: message.fileUri }} 
-              style={{ width: 200, height: 150, borderRadius: 8 }}
-              resizeMode="cover"
-            />
+            {message.fileUri ? (
+              <View>
+                <Text style={{ 
+                  color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+                  fontSize: 10,
+                  marginBottom: 4
+                }}>
+                  URI: {message.fileUri.substring(0, 50)}...
+                </Text>
+                <Image 
+                  source={{ uri: message.fileUri }} 
+                  style={{ 
+                    width: 200, 
+                    height: 150, 
+                    borderRadius: 8,
+                    backgroundColor: colors.cardBackground 
+                  }}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.error('Image load error for URI:', message.fileUri);
+                    console.error('Error details:', error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('Image loaded successfully:', message.fileUri);
+                  }}
+                  onLoadStart={() => {
+                    console.log('Image load started:', message.fileUri);
+                  }}
+                />
+              </View>
+            ) : (
+              <View style={{
+                width: 200,
+                height: 150,
+                borderRadius: 8,
+                backgroundColor: colors.cardBackground,
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border
+              }}>
+                <Icon name="image-outline" size={48} color={colors.textSecondary} />
+                <Text style={{ 
+                  color: colors.textSecondary, 
+                  marginTop: 8,
+                  fontSize: 12
+                }}>
+                  No image URI
+                </Text>
+              </View>
+            )}
             {message.content !== 'Image' && (
               <Text style={{ 
                 color: isOwnMessage ? 'white' : colors.text, 
@@ -260,7 +333,15 @@ export default function ChatScreen() {
         )}
 
         {message.type === 'file' && (
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+            onPress={() => {
+              if (message.fileUri) {
+                console.log('Opening file:', message.fileUri);
+                Alert.alert('File', `File: ${message.fileName || message.content}\nURI: ${message.fileUri}`);
+              }
+            }}
+          >
             <Icon 
               name="document-outline" 
               size={24} 
@@ -282,7 +363,7 @@ export default function ChatScreen() {
                 </Text>
               )}
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         <Text style={{
@@ -330,6 +411,14 @@ export default function ChatScreen() {
         <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 18, marginLeft: 16 }]}>
           {channel.name}
         </Text>
+        
+        {/* Debug button */}
+        <TouchableOpacity 
+          onPress={() => debugRealtime.testMessageSending(id!)}
+          style={{ marginLeft: 'auto', padding: 8 }}
+        >
+          <Icon name="bug-outline" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       {/* Messages */}
