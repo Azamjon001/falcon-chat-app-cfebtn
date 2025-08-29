@@ -1,10 +1,10 @@
 
 import React from 'react';
 import { Alert, TouchableOpacity, View, Text } from 'react-native';
-import { colors } from '../styles/commonStyles';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import Icon from './Icon';
+import { colors } from '../styles/commonStyles';
 
 interface FilePickerProps {
   onFileSelected: (uri: string, type: 'image' | 'file', options?: {
@@ -18,36 +18,22 @@ interface FilePickerProps {
 export default function FilePicker({ onFileSelected, style }: FilePickerProps) {
   const showOptions = () => {
     Alert.alert(
-      'Share File',
-      'Choose what you want to share',
+      'Select File',
+      'Choose what you want to send',
       [
-        {
-          text: 'Photo from Camera',
-          onPress: takePhoto,
-        },
-        {
-          text: 'Photo from Gallery',
-          onPress: pickImage,
-        },
-        {
-          text: 'Document/File',
-          onPress: pickDocument,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ],
-      { cancelable: true }
+        { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Choose Photo', onPress: pickImage },
+        { text: 'Choose Document', onPress: pickDocument },
+        { text: 'Cancel', style: 'cancel' }
+      ]
     );
   };
 
   const takePhoto = async () => {
     try {
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-      
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Camera permission is required to take photos');
         return;
       }
 
@@ -61,9 +47,9 @@ export default function FilePicker({ onFileSelected, style }: FilePickerProps) {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         onFileSelected(asset.uri, 'image', {
-          fileName: `photo_${Date.now()}.jpg`,
-          mimeType: 'image/jpeg',
+          fileName: asset.fileName || 'photo.jpg',
           fileSize: asset.fileSize,
+          mimeType: asset.mimeType || 'image/jpeg'
         });
       }
     } catch (error) {
@@ -74,10 +60,9 @@ export default function FilePicker({ onFileSelected, style }: FilePickerProps) {
 
   const pickImage = async () => {
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Photo library permission is required to select images.');
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Photo library permission is required to choose images');
         return;
       }
 
@@ -91,14 +76,14 @@ export default function FilePicker({ onFileSelected, style }: FilePickerProps) {
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         onFileSelected(asset.uri, 'image', {
-          fileName: asset.fileName || `image_${Date.now()}.jpg`,
-          mimeType: asset.mimeType || 'image/jpeg',
+          fileName: asset.fileName || 'image.jpg',
           fileSize: asset.fileSize,
+          mimeType: asset.mimeType || 'image/jpeg'
         });
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to select image');
+      Alert.alert('Error', 'Failed to pick image');
     }
   };
 
@@ -110,20 +95,16 @@ export default function FilePicker({ onFileSelected, style }: FilePickerProps) {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const file = result.assets[0];
-        
-        // Determine if it's an image based on mime type
-        const isImage = file.mimeType?.startsWith('image/') || false;
-        
-        onFileSelected(file.uri, isImage ? 'image' : 'file', {
-          fileName: file.name,
-          mimeType: file.mimeType || 'application/octet-stream',
-          fileSize: file.size,
+        const asset = result.assets[0];
+        onFileSelected(asset.uri, 'file', {
+          fileName: asset.name,
+          fileSize: asset.size,
+          mimeType: asset.mimeType || 'application/octet-stream'
         });
       }
     } catch (error) {
       console.error('Error picking document:', error);
-      Alert.alert('Error', 'Failed to select file');
+      Alert.alert('Error', 'Failed to pick document');
     }
   };
 
@@ -139,10 +120,10 @@ export default function FilePicker({ onFileSelected, style }: FilePickerProps) {
           alignItems: 'center',
           justifyContent: 'center',
         },
-        style,
+        style
       ]}
     >
-      <Icon name="attach-outline" size={20} color={colors.text} />
+      <Icon name="attach-outline" size={20} color={colors.primary} />
     </TouchableOpacity>
   );
 }

@@ -71,12 +71,14 @@ export default function ChatScreen() {
         scrollToBottom();
         console.log('Text message sent successfully');
       } else {
-        console.error('Failed to send text message - no message returned');
+        console.error('Failed to send text message');
         Alert.alert('Error', 'Failed to send message');
+        setNewMessage(messageContent); // Restore message
       }
     } catch (error) {
       console.error('Error sending message:', error);
       Alert.alert('Error', 'Failed to send message');
+      setNewMessage(messageContent); // Restore message
     } finally {
       setSending(false);
     }
@@ -100,7 +102,7 @@ export default function ChatScreen() {
         scrollToBottom();
         console.log('Voice message sent successfully');
       } else {
-        console.error('Failed to send voice message - no message returned');
+        console.error('Failed to send voice message');
         Alert.alert('Error', 'Failed to send voice message');
       }
     } catch (error) {
@@ -139,7 +141,7 @@ export default function ChatScreen() {
         scrollToBottom();
         console.log(`${type} sent successfully`);
       } else {
-        console.error(`Failed to send ${type} - no message returned`);
+        console.error(`Failed to send ${type}`);
         Alert.alert('Error', `Failed to send ${type}`);
       }
     } catch (error) {

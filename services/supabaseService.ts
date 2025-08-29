@@ -42,85 +42,72 @@ class SupabaseService {
 
   // User methods
   async createUser(name: string, username: string, password: string): Promise<User> {
-    console.log('Creating user in Supabase:', { name, username });
+    console.log('Creating user:', { name, username });
     
     const formattedUsername = username.startsWith('@') ? username : `@${username}`;
     
-    // Double-check username uniqueness before creating
-    const isUnique = await this.isUsernameUnique(formattedUsername);
-    if (!isUnique) {
-      console.log('Username already exists during creation:', formattedUsername);
-      throw new Error('Username already exists');
-    }
-    
-    const { data, error } = await supabase
-      .from('app_users')
-      .insert({
-        username: formattedUsername,
-        name: name.trim(),
-        password, // In production, this should be hashed
-        online: false
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .insert({
+          username: formattedUsername,
+          name: name.trim(),
+          password,
+          online: false
+        })
+        .select()
+        .single();
 
-    if (error) {
-      console.error('Error creating user:', error);
-      if (error.code === '23505') { // Unique constraint violation
-        throw new Error('Username already exists');
+      if (error) {
+        console.error('Error creating user:', error);
+        if (error.code === '23505') {
+          throw new Error('Username already exists');
+        }
+        throw new Error(`Failed to create user: ${error.message}`);
       }
-      throw new Error(`Failed to create user: ${error.message}`);
+
+      const user: User = {
+        id: data.id,
+        name: data.name,
+        username: data.username,
+        password: data.password,
+        avatar: data.photo_url || undefined,
+        backgroundImage: data.wallpaper_url || undefined,
+        createdAt: new Date(data.created_at)
+      };
+
+      console.log('User created successfully:', user.username);
+      return user;
+    } catch (error: any) {
+      console.error('Exception creating user:', error);
+      throw error;
     }
-
-    const user: User = {
-      id: data.id,
-      name: data.name,
-      username: data.username,
-      password: data.password,
-      avatar: data.photo_url || undefined,
-      backgroundImage: data.wallpaper_url || undefined,
-      createdAt: new Date(data.created_at)
-    };
-
-    console.log('User created successfully:', user.username);
-    return user;
   }
 
   async isUsernameUnique(username: string): Promise<boolean> {
     const formattedUsername = username.startsWith('@') ? username : `@${username}`;
     
-    console.log('Checking username uniqueness:', formattedUsername);
-    
     try {
-      // Use exact match with case-insensitive comparison
       const { data, error } = await supabase
         .from('app_users')
-        .select('id, username')
+        .select('id')
         .eq('username', formattedUsername)
         .limit(1);
 
       if (error) {
-        console.error('Error checking username uniqueness:', error);
-        // If there's an error, assume it's not unique to be safe
+        console.error('Error checking username:', error);
         return false;
       }
 
-      const isUnique = !data || data.length === 0;
-      console.log('Username unique check result:', formattedUsername, 'is unique:', isUnique);
-      
-      if (!isUnique && data && data.length > 0) {
-        console.log('Existing username found:', data[0].username);
-      }
-      
-      return isUnique;
+      return !data || data.length === 0;
     } catch (error) {
-      console.error('Exception during username check:', error);
+      console.error('Exception checking username:', error);
       return false;
     }
   }
 
   async loginUser(username: string, password: string): Promise<User | null> {
-    console.log('Attempting login:', username);
+    console.log('Login attempt:', username);
     
     const formattedUsername = username.startsWith('@') ? username : `@${username}`;
     
@@ -148,13 +135,6 @@ class SupabaseService {
       };
 
       this.currentUser = user;
-      
-      // Update user online status
-      await supabase
-        .from('app_users')
-        .update({ online: true, last_seen: new Date().toISOString() })
-        .eq('id', user.id);
-
       console.log('Login successful:', user.username);
       return user;
     } catch (error) {
@@ -168,26 +148,12 @@ class SupabaseService {
   }
 
   async logoutUser(): Promise<void> {
-    if (this.currentUser) {
-      try {
-        // Update user offline status
-        await supabase
-          .from('app_users')
-          .update({ online: false, last_seen: new Date().toISOString() })
-          .eq('id', this.currentUser.id);
-      } catch (error) {
-        console.error('Error updating offline status:', error);
-      }
-    }
-    
     console.log('User logged out');
     this.currentUser = null;
   }
 
   async updateUserProfile(updates: Partial<Pick<User, 'name' | 'avatar' | 'backgroundImage'>>): Promise<boolean> {
     if (!this.currentUser) return false;
-    
-    console.log('Updating user profile:', updates);
     
     try {
       const dbUpdates: any = {};
@@ -205,9 +171,7 @@ class SupabaseService {
         return false;
       }
 
-      // Update local current user
       this.currentUser = { ...this.currentUser, ...updates };
-      console.log('Profile updated successfully');
       return true;
     } catch (error) {
       console.error('Exception updating profile:', error);
@@ -242,7 +206,6 @@ class SupabaseService {
         createdAt: new Date(dbUser.created_at)
       }));
 
-      console.log('Search results:', users.length, 'users found');
       return users;
     } catch (error) {
       console.error('Exception during search:', error);
@@ -408,7 +371,6 @@ class SupabaseService {
     if (!this.currentUser) return [];
     
     try {
-      // Get both regular channels and direct chats
       const regularChannels = await this.getRegularChannels();
       const directChats = await this.getDirectChats();
       
@@ -445,7 +407,6 @@ class SupabaseService {
       const channels: Channel[] = [];
       for (const item of data) {
         if (item.channels) {
-          // Get all members for this channel
           const { data: membersData } = await supabase
             .from('channel_members')
             .select('user_id')
@@ -471,30 +432,6 @@ class SupabaseService {
     }
   }
 
-  async joinChannel(channelId: string): Promise<boolean> {
-    if (!this.currentUser) return false;
-    
-    try {
-      const { error } = await supabase
-        .from('channel_members')
-        .insert({
-          channel_id: channelId,
-          user_id: this.currentUser.id
-        });
-
-      if (error) {
-        console.error('Error joining channel:', error);
-        return false;
-      }
-
-      console.log('Joined channel:', channelId);
-      return true;
-    } catch (error) {
-      console.error('Exception joining channel:', error);
-      return false;
-    }
-  }
-
   // Message methods
   async sendMessage(
     channelId: string, 
@@ -513,7 +450,7 @@ class SupabaseService {
       return null;
     }
     
-    console.log('Sending message:', { channelId, content, type, options });
+    console.log('Sending message:', { channelId, content, type });
     
     try {
       const { data, error } = await supabase
@@ -592,8 +529,6 @@ class SupabaseService {
 
   // Debug methods
   async getAllUsers(): Promise<User[]> {
-    console.log('Fetching all users for debugging');
-    
     try {
       const { data, error } = await supabase
         .from('app_users')
@@ -615,7 +550,6 @@ class SupabaseService {
         createdAt: new Date(dbUser.created_at)
       }));
 
-      console.log('All users in database:', users.map(u => u.username));
       return users;
     } catch (error) {
       console.error('Exception fetching all users:', error);
@@ -627,7 +561,6 @@ class SupabaseService {
     console.log('Clearing all data - USE WITH CAUTION');
     
     try {
-      // Delete in order due to foreign key constraints
       await supabase.from('messages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('channel_members').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('direct_chats').delete().neq('id', '00000000-0000-0000-0000-000000000000');

@@ -34,7 +34,7 @@ export default function LoginScreen() {
         ]);
       } else {
         console.log('Login failed - invalid credentials');
-        Alert.alert('Error', 'Invalid username or password. Please check your credentials and try again.');
+        Alert.alert('Error', 'Invalid username or password');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -64,7 +64,6 @@ export default function LoginScreen() {
             onChangeText={setUsername}
             autoCapitalize="none"
             autoCorrect={false}
-            autoComplete="username"
           />
         </View>
 
@@ -74,7 +73,6 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoComplete="password"
           />
         </View>
 
@@ -93,13 +91,6 @@ export default function LoginScreen() {
             style={{ backgroundColor: 'transparent' }}
             textStyle={{ color: colors.primary }}
           />
-        </View>
-
-        {/* Debug Info */}
-        <View style={{ marginTop: 40, padding: 16, backgroundColor: colors.cardBackground, borderRadius: 8 }}>
-          <Text style={[commonStyles.textSecondary, { fontSize: 12, textAlign: 'center' }]}>
-            Debug: Make sure your username starts with @ symbol
-          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

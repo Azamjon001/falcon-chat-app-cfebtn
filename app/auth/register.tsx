@@ -115,7 +115,6 @@ export default function RegisterScreen() {
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
-            autoComplete="name"
           />
         </View>
 
@@ -126,7 +125,6 @@ export default function RegisterScreen() {
             onChangeText={setUsername}
             autoCapitalize="none"
             autoCorrect={false}
-            autoComplete="username"
           />
         </View>
 
@@ -136,7 +134,6 @@ export default function RegisterScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoComplete="password"
           />
         </View>
 
