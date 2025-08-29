@@ -138,32 +138,22 @@ export default function RegisterScreen() {
         </View>
 
         <Button
-          title={loading ? "Creating Account..." : "Create Account"}
+          text={loading ? "Creating Account..." : "Create Account"}
           onPress={handleRegister}
           disabled={loading}
           style={buttonStyles.primary}
         />
 
-        <View style={[commonStyles.row, { marginTop: 24, justifyContent: 'center' }]}>
-          <Text style={commonStyles.textSecondary}>Already have an account? </Text>
-          <Button
-            title="Sign In"
-            onPress={() => router.push('/auth/login')}
-            style={{ backgroundColor: 'transparent' }}
-            textStyle={{ color: colors.primary }}
-          />
-        </View>
-
         {/* Debug Tools */}
         <View style={{ marginTop: 40, gap: 8 }}>
           <Button
-            title="Debug: Show All Users"
+            text="Debug: Show All Users"
             onPress={handleDebugShowUsers}
-            style={{ backgroundColor: colors.cardBackground }}
+            style={{ backgroundColor: colors.backgroundAlt }}
             textStyle={{ color: colors.text, fontSize: 12 }}
           />
           <Button
-            title="Debug: Clear All Data"
+            text="Debug: Clear All Data"
             onPress={handleDebugClearData}
             style={{ backgroundColor: '#ff4444' }}
             textStyle={{ color: 'white', fontSize: 12 }}
@@ -171,7 +161,7 @@ export default function RegisterScreen() {
         </View>
 
         {/* Info */}
-        <View style={{ marginTop: 16, padding: 16, backgroundColor: colors.cardBackground, borderRadius: 8 }}>
+        <View style={{ marginTop: 16, padding: 16, backgroundColor: colors.backgroundAlt, borderRadius: 8 }}>
           <Text style={[commonStyles.textSecondary, { fontSize: 12, textAlign: 'center' }]}>
             Usernames are unique across all devices. The @ symbol will be added automatically if not provided.
           </Text>

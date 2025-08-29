@@ -77,7 +77,7 @@ export default function LoginScreen() {
         </View>
 
         <Button
-          title={loading ? "Signing In..." : "Sign In"}
+          text={loading ? "Signing In..." : "Sign In"}
           onPress={handleLogin}
           disabled={loading}
           style={buttonStyles.primary}
@@ -86,10 +86,10 @@ export default function LoginScreen() {
         <View style={[commonStyles.row, { marginTop: 24, justifyContent: 'center' }]}>
           <Text style={commonStyles.textSecondary}>Don&apos;t have an account? </Text>
           <Button
-            title="Sign Up"
+            text="Sign Up"
             onPress={() => router.push('/auth/register')}
-            style={{ backgroundColor: 'transparent' }}
-            textStyle={{ color: colors.primary }}
+            style={{ backgroundColor: 'transparent', paddingVertical: 0, paddingHorizontal: 0, minHeight: 'auto' }}
+            textStyle={{ color: colors.primary, fontWeight: '600' }}
           />
         </View>
       </ScrollView>
