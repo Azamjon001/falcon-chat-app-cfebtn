@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import { supabaseService } from '../../services/supabaseService';
 import { router } from 'expo-router';
 import PromptModal from '../../components/PromptModal';
+import AddUserModal from '../../components/AddUserModal';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
 import { Channel } from '../../types/User';
@@ -13,6 +14,8 @@ export default function ChannelsScreen() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
 
   useEffect(() => {
     loadChannels();
@@ -47,9 +50,13 @@ export default function ChannelsScreen() {
       if (channel) {
         setChannels(prev => [channel, ...prev]);
         console.log('Channel created successfully');
+        Alert.alert('Success', `Channel "${channelName}" has been created!`);
+      } else {
+        Alert.alert('Error', 'Failed to create channel. Please try again.');
       }
     } catch (error) {
       console.error('Error creating channel:', error);
+      Alert.alert('Error', 'Failed to create channel. Please try again.');
     }
     
     setShowCreateModal(false);
@@ -62,6 +69,44 @@ export default function ChannelsScreen() {
   const handleChannelPress = (channel: Channel) => {
     console.log('Opening channel:', channel.name);
     router.push(`/chat/${channel.id}`);
+  };
+
+  const handleChannelLongPress = (channel: Channel) => {
+    if (isDirectMessage(channel)) return; // Don't show options for direct messages
+    
+    const currentUser = supabaseService.getCurrentUser();
+    if (!currentUser) return;
+
+    // Only show add user option if user is the creator or member
+    if (channel.createdBy === currentUser.id || channel.members.includes(currentUser.id)) {
+      Alert.alert(
+        'Channel Options',
+        `What would you like to do with "${channel.name}"?`,
+        [
+          {
+            text: 'Add User',
+            onPress: () => {
+              setSelectedChannel(channel);
+              setShowAddUserModal(true);
+            }
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    }
+  };
+
+  const handleAddUserModalClose = () => {
+    setShowAddUserModal(false);
+    setSelectedChannel(null);
+  };
+
+  const handleUserAdded = () => {
+    // Reload channels to get updated member count
+    loadChannels();
   };
 
   const isDirectMessage = (channel: Channel) => {
@@ -113,6 +158,7 @@ export default function ChannelsScreen() {
                   key={channel.id}
                   style={commonStyles.card}
                   onPress={() => handleChannelPress(channel)}
+                  onLongPress={() => handleChannelLongPress(channel)}
                   activeOpacity={0.7}
                 >
                   <View style={commonStyles.row}>
@@ -139,7 +185,12 @@ export default function ChannelsScreen() {
                         {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
                       </Text>
                     </View>
-                    <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+                    <View style={{ alignItems: 'center' }}>
+                      <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+                      <Text style={[commonStyles.textSecondary, { fontSize: 10, marginTop: 2 }]}>
+                        Hold to add users
+                      </Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -199,6 +250,16 @@ export default function ChannelsScreen() {
         confirmText="Create"
         cancelText="Cancel"
       />
+
+      {selectedChannel && (
+        <AddUserModal
+          visible={showAddUserModal}
+          channelId={selectedChannel.id}
+          channelName={selectedChannel.name}
+          onClose={handleAddUserModalClose}
+          onUserAdded={handleUserAdded}
+        />
+      )}
     </View>
   );
 }

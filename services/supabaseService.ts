@@ -39,6 +39,7 @@ export interface DatabaseMessage {
 
 class SupabaseService {
   private currentUser: User | null = null;
+  private messageSubscriptions: Map<string, any> = new Map();
 
   // User methods
   async createUser(name: string, username: string, password: string): Promise<User> {
@@ -149,6 +150,11 @@ class SupabaseService {
 
   async logoutUser(): Promise<void> {
     console.log('User logged out');
+    // Clean up subscriptions
+    this.messageSubscriptions.forEach((subscription) => {
+      subscription.unsubscribe();
+    });
+    this.messageSubscriptions.clear();
     this.currentUser = null;
   }
 
@@ -236,6 +242,35 @@ class SupabaseService {
       };
     } catch (error) {
       console.error('Exception getting user by ID:', error);
+      return undefined;
+    }
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const formattedUsername = username.startsWith('@') ? username : `@${username}`;
+    
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('username', formattedUsername)
+        .single();
+
+      if (error || !data) {
+        return undefined;
+      }
+
+      return {
+        id: data.id,
+        name: data.name,
+        username: data.username,
+        password: data.password,
+        avatar: data.photo_url || undefined,
+        backgroundImage: data.wallpaper_url || undefined,
+        createdAt: new Date(data.created_at)
+      };
+    } catch (error) {
+      console.error('Exception getting user by username:', error);
       return undefined;
     }
   }
@@ -344,12 +379,17 @@ class SupabaseService {
       }
 
       // Add creator as member
-      await supabase
+      const { error: memberError } = await supabase
         .from('channel_members')
         .insert({
           channel_id: data.id,
           user_id: this.currentUser.id
         });
+
+      if (memberError) {
+        console.error('Error adding creator as member:', memberError);
+        // Don't fail the channel creation, just log the error
+      }
 
       const channel: Channel = {
         id: data.id,
@@ -360,10 +400,58 @@ class SupabaseService {
         createdAt: new Date(data.created_at)
       };
 
+      console.log('Channel created successfully:', channel.id);
       return channel;
     } catch (error) {
       console.error('Exception creating channel:', error);
       return null;
+    }
+  }
+
+  async addUserToChannel(channelId: string, username: string): Promise<boolean> {
+    if (!this.currentUser) return false;
+    
+    console.log('Adding user to channel:', { channelId, username });
+    
+    try {
+      // Find user by username
+      const user = await this.getUserByUsername(username);
+      if (!user) {
+        console.error('User not found:', username);
+        return false;
+      }
+
+      // Check if user is already a member
+      const { data: existingMember } = await supabase
+        .from('channel_members')
+        .select('id')
+        .eq('channel_id', channelId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingMember) {
+        console.log('User is already a member of this channel');
+        return true;
+      }
+
+      // Add user to channel
+      const { error } = await supabase
+        .from('channel_members')
+        .insert({
+          channel_id: channelId,
+          user_id: user.id
+        });
+
+      if (error) {
+        console.error('Error adding user to channel:', error);
+        return false;
+      }
+
+      console.log('User added to channel successfully');
+      return true;
+    } catch (error) {
+      console.error('Exception adding user to channel:', error);
+      return false;
     }
   }
 
@@ -430,6 +518,59 @@ class SupabaseService {
       console.error('Exception getting regular channels:', error);
       return [];
     }
+  }
+
+  // Real-time message subscription
+  subscribeToMessages(channelId: string, onMessage: (message: Message) => void): () => void {
+    console.log('Subscribing to messages for channel:', channelId);
+    
+    // Clean up existing subscription for this channel
+    if (this.messageSubscriptions.has(channelId)) {
+      this.messageSubscriptions.get(channelId).unsubscribe();
+    }
+
+    const subscription = supabase
+      .channel(`messages:${channelId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `chat_id=eq.${channelId}`
+        },
+        (payload) => {
+          console.log('New message received via real-time:', payload.new);
+          const dbMessage = payload.new as DatabaseMessage;
+          
+          const message: Message = {
+            id: dbMessage.id,
+            channelId: dbMessage.chat_id,
+            userId: dbMessage.sender_id,
+            content: dbMessage.text || '',
+            type: dbMessage.type as 'text' | 'voice' | 'file' | 'image',
+            timestamp: new Date(dbMessage.created_at),
+            fileName: dbMessage.file_name || undefined,
+            duration: dbMessage.duration_sec || undefined,
+            fileUri: dbMessage.attachment_url || undefined,
+            mimeType: dbMessage.mime_type || undefined
+          };
+
+          onMessage(message);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+      });
+
+    this.messageSubscriptions.set(channelId, subscription);
+
+    // Return unsubscribe function
+    return () => {
+      console.log('Unsubscribing from messages for channel:', channelId);
+      subscription.unsubscribe();
+      this.messageSubscriptions.delete(channelId);
+    };
   }
 
   // Message methods

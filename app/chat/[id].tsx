@@ -19,6 +19,7 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const loadChannelData = useCallback(async () => {
     console.log('Loading channel data for:', id);
@@ -50,12 +51,54 @@ export default function ChatScreen() {
     }
   }, [id]);
 
+  const setupRealtimeSubscription = useCallback(() => {
+    if (!id) return;
+
+    console.log('Setting up real-time subscription for channel:', id);
+    
+    // Clean up existing subscription
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+    }
+
+    // Set up new subscription
+    unsubscribeRef.current = supabaseService.subscribeToMessages(id, (newMessage) => {
+      console.log('Received real-time message:', newMessage.id, 'from user:', newMessage.userId);
+      
+      setMessages(prev => {
+        // Check if message already exists to avoid duplicates
+        const exists = prev.some(msg => msg.id === newMessage.id);
+        if (exists) {
+          console.log('Message already exists, skipping duplicate:', newMessage.id);
+          return prev;
+        }
+        
+        console.log('Adding new message to state:', newMessage.id);
+        const updatedMessages = [...prev, newMessage];
+        
+        // Auto-scroll to bottom when new message arrives
+        setTimeout(scrollToBottom, 100);
+        
+        return updatedMessages;
+      });
+    });
+  }, [id]);
+
   useEffect(() => {
     if (id) {
       loadChannelData();
       loadMessages();
+      setupRealtimeSubscription();
     }
-  }, [id, loadChannelData, loadMessages]);
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribeRef.current) {
+        console.log('Cleaning up real-time subscription on unmount');
+        unsubscribeRef.current();
+      }
+    };
+  }, [id, loadChannelData, loadMessages, setupRealtimeSubscription]);
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !id || sending) return;
@@ -68,9 +111,7 @@ export default function ChatScreen() {
       console.log('Sending text message:', messageContent);
       const message = await supabaseService.sendMessage(id, messageContent, 'text');
       if (message) {
-        setMessages(prev => [...prev, message]);
-        scrollToBottom();
-        console.log('Text message sent successfully');
+        console.log('Text message sent successfully, real-time will handle the update');
       } else {
         console.error('Failed to send text message');
         Alert.alert('Error', 'Failed to send message');
@@ -99,9 +140,7 @@ export default function ChatScreen() {
       });
       
       if (message) {
-        setMessages(prev => [...prev, message]);
-        scrollToBottom();
-        console.log('Voice message sent successfully');
+        console.log('Voice message sent successfully, real-time will handle the update');
       } else {
         console.error('Failed to send voice message');
         Alert.alert('Error', 'Failed to send voice message');
@@ -138,9 +177,7 @@ export default function ChatScreen() {
       });
       
       if (message) {
-        setMessages(prev => [...prev, message]);
-        scrollToBottom();
-        console.log(`${type} sent successfully`);
+        console.log(`${type} sent successfully, real-time will handle the update`);
       } else {
         console.error(`Failed to send ${type}`);
         Alert.alert('Error', `Failed to send ${type}`);
