@@ -149,20 +149,30 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
-      // Check if the recorded file exists
+      // Verify the recorded file exists and is accessible
       try {
         const response = await fetch(uri);
         if (!response.ok) {
-          throw new Error('Recording file not accessible');
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        console.log('Recording file verified, size:', response.headers.get('content-length'));
+        const blob = await response.blob();
+        console.log('Recording file verified - Size:', blob.size, 'bytes');
+        
+        if (blob.size === 0) {
+          throw new Error('Recording file is empty');
+        }
       } catch (error) {
         console.error('Recording file verification failed:', error);
-        Alert.alert('Error', 'Recording file is not accessible. Please try recording again.');
+        Alert.alert(
+          'Recording Error', 
+          'The recording file is not accessible or corrupted. Please try recording again.',
+          [{ text: 'OK' }]
+        );
         setSending(false);
         return;
       }
 
+      // Send the voice message
       const message = await supabaseService.sendMessage(id, 'Voice message', 'voice', {
         fileUri: uri,
         duration,
@@ -171,15 +181,23 @@ export default function ChatScreen() {
       });
       
       if (message) {
-        console.log('Voice message sent successfully');
+        console.log('✅ Voice message sent successfully');
         debugRealtime.logMessageData(message);
       } else {
-        console.error('Failed to send voice message');
-        Alert.alert('Error', 'Failed to send voice message. Please try again.');
+        console.error('❌ Failed to send voice message');
+        Alert.alert(
+          'Upload Failed', 
+          'Failed to upload voice message to cloud storage. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
       console.error('Error sending voice message:', error);
-      Alert.alert('Error', 'Failed to send voice message. Please try again.');
+      Alert.alert(
+        'Voice Message Error', 
+        'Failed to send voice message. This could be due to network issues or storage problems. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setSending(false);
     }

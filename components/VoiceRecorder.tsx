@@ -18,6 +18,7 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
 
   const startRecording = async () => {
     try {
+      console.log('=== STARTING VOICE RECORDING ===');
       console.log('Requesting recording permissions');
       const permission = await Audio.requestPermissionsAsync();
       
@@ -65,7 +66,7 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
       setIsRecording(true);
       setRecordingDuration(0);
 
-      console.log('Recording started successfully');
+      console.log('✅ Recording started successfully');
 
       // Start duration counter
       durationIntervalRef.current = setInterval(() => {
@@ -73,14 +74,14 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
       }, 1000);
 
     } catch (err) {
-      console.error('Failed to start recording', err);
-      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
+      console.error('❌ Failed to start recording:', err);
+      Alert.alert('Recording Error', 'Failed to start recording. Please check microphone permissions and try again.');
     }
   };
 
   const stopRecording = async () => {
     try {
-      console.log('Stopping recording');
+      console.log('=== STOPPING VOICE RECORDING ===');
       
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
@@ -89,6 +90,7 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
 
       if (!recordingRef.current) {
         console.error('No recording to stop');
+        Alert.alert('Error', 'No active recording found');
         return;
       }
 
@@ -103,30 +105,46 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
       if (uri) {
         // Verify the file exists and has content
         try {
+          console.log('Verifying recording file...');
           const response = await fetch(uri);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
           const blob = await response.blob();
-          console.log('Recording file size:', blob.size, 'bytes');
+          console.log('Recording file verification - Size:', blob.size, 'bytes, Type:', blob.type);
           
           if (blob.size === 0) {
             throw new Error('Recording file is empty');
           }
           
-          console.log('Recording saved successfully to', uri);
-          onRecordingComplete(uri, recordingDuration);
+          if (recordingDuration < 1) {
+            console.warn('Recording duration is very short:', recordingDuration, 'seconds');
+            Alert.alert('Short Recording', 'Recording is very short. Are you sure you want to send it?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Send', onPress: () => onRecordingComplete(uri, Math.max(recordingDuration, 1)) }
+            ]);
+          } else {
+            console.log('✅ Recording saved successfully');
+            console.log('Duration:', recordingDuration, 'seconds');
+            console.log('File size:', blob.size, 'bytes');
+            onRecordingComplete(uri, recordingDuration);
+          }
         } catch (error) {
-          console.error('Error verifying recording file:', error);
-          Alert.alert('Error', 'Recording failed. Please try again.');
+          console.error('❌ Error verifying recording file:', error);
+          Alert.alert('Recording Error', 'Recording failed or file is corrupted. Please try again.');
         }
       } else {
-        console.error('No URI returned from recording');
-        Alert.alert('Error', 'Recording failed. Please try again.');
+        console.error('❌ No URI returned from recording');
+        Alert.alert('Recording Error', 'Recording failed to save. Please try again.');
       }
       
       recordingRef.current = null;
       setRecordingDuration(0);
     } catch (error) {
-      console.error('Failed to stop recording', error);
-      Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      console.error('❌ Failed to stop recording:', error);
+      Alert.alert('Recording Error', 'Failed to stop recording properly. Please try again.');
       setIsRecording(false);
       setRecordingDuration(0);
     }

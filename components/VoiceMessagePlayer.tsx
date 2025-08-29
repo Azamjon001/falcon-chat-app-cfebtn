@@ -29,7 +29,7 @@ export default function VoiceMessagePlayer({
     // Check if this is a local file that might not exist
     if (uri.startsWith('file://') && uri.includes('ExperienceData')) {
       console.log('Detected potentially unavailable local file:', uri);
-      // We'll check availability when user tries to play
+      setIsUnavailable(true);
     }
 
     return () => {
@@ -49,43 +49,32 @@ export default function VoiceMessagePlayer({
 
   const togglePlayback = async () => {
     try {
-      if (isLoading || isUnavailable) return;
+      if (isLoading) return;
+
+      // If the file is unavailable, show error immediately
+      if (isUnavailable || (uri.startsWith('file://') && uri.includes('ExperienceData'))) {
+        Alert.alert(
+          'Voice Message Unavailable', 
+          'This voice message is no longer available. Local recordings are temporary and may be deleted by the system.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
       if (!soundRef.current) {
         setIsLoading(true);
         console.log('Loading voice message:', uri);
         
-        // Check if the URI is accessible
+        // Validate URI before attempting to load
         let audioSource;
         if (uri.startsWith('http://') || uri.startsWith('https://')) {
           // Remote URL - use directly
           audioSource = { uri };
           console.log('Using remote URL:', uri);
-        } else if (uri.startsWith('file://')) {
-          // Local file - check if it exists
-          try {
-            const response = await fetch(uri);
-            if (response.ok) {
-              audioSource = { uri };
-              console.log('Local file exists, using:', uri);
-            } else {
-              throw new Error('Local file not accessible');
-            }
-          } catch (error) {
-            console.error('Local file not accessible:', error);
-            setIsUnavailable(true);
-            Alert.alert(
-              'Voice Message Unavailable', 
-              'This voice message is no longer available. Local recordings are temporary and may be deleted by the system.',
-              [{ text: 'OK' }]
-            );
-            setIsLoading(false);
-            return;
-          }
         } else {
-          // Assume it's a local URI
+          // Local file - this should not happen for new messages
+          console.warn('Local file URI detected, this may not work:', uri);
           audioSource = { uri };
-          console.log('Using URI as-is:', uri);
         }
         
         const { sound } = await Audio.Sound.createAsync(
@@ -126,22 +115,17 @@ export default function VoiceMessagePlayer({
       setIsPlaying(false);
       
       // More specific error messages
-      if (error.message && error.message.includes('FileNotFoundException')) {
+      if (error.message && (error.message.includes('FileNotFoundException') || error.message.includes('ENOENT'))) {
         setIsUnavailable(true);
         Alert.alert(
           'Voice Message Unavailable', 
-          'This voice message file is no longer available. It may have been moved or deleted by the system.',
+          'This voice message file is no longer available. Local recordings are temporary and may be automatically deleted by the system.',
           [{ text: 'OK' }]
         );
-      } else if (error.message && error.message.includes('ENOENT')) {
-        setIsUnavailable(true);
-        Alert.alert(
-          'File Not Found', 
-          'Voice message file not found. Local recordings are temporary and may be automatically deleted.',
-          [{ text: 'OK' }]
-        );
+      } else if (error.message && error.message.includes('Network')) {
+        Alert.alert('Network Error', 'Unable to load voice message. Please check your internet connection.');
       } else {
-        Alert.alert('Playback Error', 'Failed to play voice message. Please try again.');
+        Alert.alert('Playback Error', 'Failed to play voice message. The file may be corrupted or unavailable.');
       }
     }
   };
@@ -155,6 +139,9 @@ export default function VoiceMessagePlayer({
   const textColor = isOwnMessage ? 'white' : colors.text;
   const secondaryTextColor = isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary;
 
+  // Show unavailable state for local files
+  const showUnavailable = isUnavailable || (uri.startsWith('file://') && uri.includes('ExperienceData'));
+
   return (
     <View style={[{
       flexDirection: 'row',
@@ -163,12 +150,12 @@ export default function VoiceMessagePlayer({
     }, style]}>
       <TouchableOpacity
         onPress={togglePlayback}
-        disabled={isLoading || isUnavailable}
+        disabled={isLoading || showUnavailable}
         style={{
           width: 40,
           height: 40,
           borderRadius: 20,
-          backgroundColor: isUnavailable 
+          backgroundColor: showUnavailable 
             ? (isOwnMessage ? 'rgba(255,255,255,0.1)' : colors.border)
             : (isOwnMessage ? 'rgba(255,255,255,0.2)' : colors.cardBackground),
           alignItems: 'center',
@@ -178,7 +165,7 @@ export default function VoiceMessagePlayer({
       >
         {isLoading ? (
           <Icon name="hourglass-outline" size={20} color={iconColor} />
-        ) : isUnavailable ? (
+        ) : showUnavailable ? (
           <Icon name="alert-circle-outline" size={20} color={isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary} />
         ) : (
           <Icon 
@@ -199,8 +186,8 @@ export default function VoiceMessagePlayer({
         }}>
           <View style={{
             height: '100%',
-            width: `${getProgressPercentage()}%`,
-            backgroundColor: iconColor,
+            width: showUnavailable ? '0%' : `${getProgressPercentage()}%`,
+            backgroundColor: showUnavailable ? colors.textSecondary : iconColor,
             borderRadius: 1.5,
           }} />
         </View>
@@ -211,7 +198,7 @@ export default function VoiceMessagePlayer({
             fontSize: 12,
             fontWeight: '500'
           }}>
-            {isPlaying ? formatTime(playbackPosition) : '0:00'}
+            {showUnavailable ? 'Unavailable' : (isPlaying ? formatTime(playbackPosition) : '0:00')}
           </Text>
           <Text style={{ 
             color: secondaryTextColor, 
@@ -220,6 +207,17 @@ export default function VoiceMessagePlayer({
             {formatTime(playbackDuration)}
           </Text>
         </View>
+
+        {showUnavailable && (
+          <Text style={{
+            color: secondaryTextColor,
+            fontSize: 10,
+            marginTop: 4,
+            fontStyle: 'italic'
+          }}>
+            Voice message no longer available
+          </Text>
+        )}
       </View>
     </View>
   );

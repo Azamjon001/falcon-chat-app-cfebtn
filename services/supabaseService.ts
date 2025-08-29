@@ -586,68 +586,127 @@ class SupabaseService {
     };
   }
 
-  // File upload methods
+  // Improved file upload methods with better error handling
   async uploadFile(fileUri: string, fileName: string, mimeType?: string): Promise<string | null> {
     try {
-      console.log('Uploading file to Supabase Storage:', { fileUri, fileName, mimeType });
+      console.log('=== UPLOADING FILE TO SUPABASE STORAGE ===');
+      console.log('File URI:', fileUri);
+      console.log('File name:', fileName);
+      console.log('MIME type:', mimeType);
+
+      // Validate file URI
+      if (!fileUri) {
+        console.error('No file URI provided');
+        return null;
+      }
 
       // Create a unique file name to avoid conflicts
       const timestamp = Date.now();
       const uniqueFileName = `${timestamp}_${fileName}`;
       const filePath = `uploads/${uniqueFileName}`;
 
-      // Read the file as blob
-      const response = await fetch(fileUri);
-      if (!response.ok) {
-        console.error('Failed to fetch file:', response.status, response.statusText);
+      // Read the file as blob with better error handling
+      let response;
+      try {
+        response = await fetch(fileUri);
+        if (!response.ok) {
+          console.error('Failed to fetch file:', response.status, response.statusText);
+          return null;
+        }
+      } catch (fetchError) {
+        console.error('Error fetching file:', fetchError);
         return null;
       }
       
       const blob = await response.blob();
-      console.log('File blob created, size:', blob.size, 'type:', blob.type);
+      console.log('File blob created - Size:', blob.size, 'bytes, Type:', blob.type);
 
       if (blob.size === 0) {
         console.error('File is empty, cannot upload');
         return null;
       }
 
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('files')
-        .upload(filePath, blob, {
-          contentType: mimeType || blob.type || 'application/octet-stream',
-          upsert: false
-        });
+      // Determine content type
+      const contentType = mimeType || blob.type || 'application/octet-stream';
+      console.log('Using content type:', contentType);
 
-      if (error) {
-        console.error('Error uploading file to storage:', error);
-        
-        // If bucket doesn't exist, try to create it
-        if (error.message.includes('Bucket not found')) {
-          console.log('Bucket not found, trying to create it...');
-          // For now, just return null and use local URI as fallback
-          return null;
+      // Upload to Supabase Storage with retry logic
+      let uploadAttempts = 0;
+      const maxAttempts = 3;
+      
+      while (uploadAttempts < maxAttempts) {
+        try {
+          console.log(`Upload attempt ${uploadAttempts + 1}/${maxAttempts}`);
+          
+          const { data, error } = await supabase.storage
+            .from('files')
+            .upload(filePath, blob, {
+              contentType,
+              upsert: false
+            });
+
+          if (error) {
+            console.error(`Upload attempt ${uploadAttempts + 1} failed:`, error);
+            
+            if (error.message.includes('Bucket not found')) {
+              console.error('Storage bucket "files" not found');
+              return null;
+            }
+            
+            if (uploadAttempts === maxAttempts - 1) {
+              console.error('All upload attempts failed');
+              return null;
+            }
+            
+            uploadAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 1000 * uploadAttempts)); // Exponential backoff
+            continue;
+          }
+
+          console.log('File uploaded successfully:', data.path);
+
+          // Get the public URL
+          const { data: publicUrlData } = supabase.storage
+            .from('files')
+            .getPublicUrl(data.path);
+
+          console.log('Public URL generated:', publicUrlData.publicUrl);
+          
+          // Verify the uploaded file is accessible
+          try {
+            const verifyResponse = await fetch(publicUrlData.publicUrl);
+            if (verifyResponse.ok) {
+              console.log('Upload verification successful');
+              return publicUrlData.publicUrl;
+            } else {
+              console.warn('Upload verification failed, but returning URL anyway');
+              return publicUrlData.publicUrl;
+            }
+          } catch (verifyError) {
+            console.warn('Could not verify upload, but returning URL anyway:', verifyError);
+            return publicUrlData.publicUrl;
+          }
+        } catch (uploadError) {
+          console.error(`Upload attempt ${uploadAttempts + 1} exception:`, uploadError);
+          uploadAttempts++;
+          
+          if (uploadAttempts >= maxAttempts) {
+            console.error('All upload attempts failed with exceptions');
+            return null;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 1000 * uploadAttempts));
         }
-        
-        return null;
       }
 
-      console.log('File uploaded successfully:', data.path);
-
-      // Get the public URL
-      const { data: publicUrlData } = supabase.storage
-        .from('files')
-        .getPublicUrl(data.path);
-
-      console.log('Public URL generated:', publicUrlData.publicUrl);
-      return publicUrlData.publicUrl;
+      return null;
     } catch (error) {
-      console.error('Exception uploading file:', error);
+      console.error('Exception in uploadFile:', error);
       return null;
     }
   }
 
-  // Message methods
+  // Message methods with improved voice message handling
   async sendMessage(
     channelId: string, 
     content: string, 
@@ -665,27 +724,45 @@ class SupabaseService {
       return null;
     }
     
-    console.log('Sending message:', { channelId, content, type, options });
+    console.log('=== SENDING MESSAGE ===');
+    console.log('Channel ID:', channelId);
+    console.log('Content:', content);
+    console.log('Type:', type);
+    console.log('Options:', options);
     
     try {
       let attachmentUrl = options?.fileUri;
 
       // Upload file to storage if it's a local file URI
       if (options?.fileUri && (type === 'voice' || type === 'file' || type === 'image')) {
-        console.log('Uploading file before sending message...');
+        console.log('=== UPLOADING FILE BEFORE SENDING MESSAGE ===');
         
         let fileName = options.fileName || `${type}_${Date.now()}`;
         if (type === 'voice' && !fileName.includes('.')) {
           fileName += '.m4a';
         }
 
-        const uploadedUrl = await this.uploadFile(options.fileUri, fileName, options.mimeType);
+        // For voice messages, ensure we have a proper MIME type
+        let mimeType = options.mimeType;
+        if (type === 'voice' && !mimeType) {
+          mimeType = 'audio/m4a';
+        }
+
+        const uploadedUrl = await this.uploadFile(options.fileUri, fileName, mimeType);
         if (uploadedUrl) {
           attachmentUrl = uploadedUrl;
-          console.log('File uploaded successfully, using storage URL:', uploadedUrl);
+          console.log('✅ File uploaded successfully to cloud storage:', uploadedUrl);
         } else {
-          console.warn('Failed to upload file, using original URI as fallback');
-          // Continue with original URI as fallback
+          console.error('❌ Failed to upload file to cloud storage');
+          
+          // For voice messages, we should not proceed with local URI as it will become unavailable
+          if (type === 'voice') {
+            console.error('Voice message upload failed, cannot proceed with local URI');
+            throw new Error('Failed to upload voice message to cloud storage');
+          }
+          
+          // For other file types, we can try to proceed with original URI as fallback
+          console.warn('Using original URI as fallback (may not work long-term)');
           attachmentUrl = options.fileUri;
         }
       }
@@ -712,7 +789,7 @@ class SupabaseService {
         .single();
 
       if (error) {
-        console.error('Error sending message:', error);
+        console.error('Error inserting message into database:', error);
         return null;
       }
 
@@ -729,7 +806,7 @@ class SupabaseService {
         mimeType: data.mime_type || undefined
       };
 
-      console.log('Message sent successfully:', message);
+      console.log('✅ Message sent successfully:', message.id);
       return message;
     } catch (error) {
       console.error('Exception sending message:', error);
