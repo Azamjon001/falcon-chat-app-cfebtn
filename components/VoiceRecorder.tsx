@@ -26,19 +26,46 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
         return;
       }
 
+      console.log('Setting audio mode for recording');
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
       });
 
-      console.log('Starting recording');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      console.log('Starting recording with high quality settings');
+      const recordingOptions = {
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_MPEG4AAC,
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      };
+
+      const { recording } = await Audio.Recording.createAsync(recordingOptions);
       
       recordingRef.current = recording;
       setIsRecording(true);
       setRecordingDuration(0);
+
+      console.log('Recording started successfully');
 
       // Start duration counter
       durationIntervalRef.current = setInterval(() => {
@@ -47,7 +74,7 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
 
     } catch (err) {
       console.error('Failed to start recording', err);
-      Alert.alert('Error', 'Failed to start recording');
+      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
     }
   };
 
@@ -60,22 +87,48 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
         durationIntervalRef.current = null;
       }
 
-      if (!recordingRef.current) return;
+      if (!recordingRef.current) {
+        console.error('No recording to stop');
+        return;
+      }
 
       setIsRecording(false);
+      
+      console.log('Stopping and unloading recording');
       await recordingRef.current.stopAndUnloadAsync();
       
       const uri = recordingRef.current.getURI();
+      console.log('Recording URI:', uri);
+      
       if (uri) {
-        console.log('Recording saved to', uri);
-        onRecordingComplete(uri, recordingDuration);
+        // Verify the file exists and has content
+        try {
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          console.log('Recording file size:', blob.size, 'bytes');
+          
+          if (blob.size === 0) {
+            throw new Error('Recording file is empty');
+          }
+          
+          console.log('Recording saved successfully to', uri);
+          onRecordingComplete(uri, recordingDuration);
+        } catch (error) {
+          console.error('Error verifying recording file:', error);
+          Alert.alert('Error', 'Recording failed. Please try again.');
+        }
+      } else {
+        console.error('No URI returned from recording');
+        Alert.alert('Error', 'Recording failed. Please try again.');
       }
       
       recordingRef.current = null;
       setRecordingDuration(0);
     } catch (error) {
       console.error('Failed to stop recording', error);
-      Alert.alert('Error', 'Failed to stop recording');
+      Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      setIsRecording(false);
+      setRecordingDuration(0);
     }
   };
 

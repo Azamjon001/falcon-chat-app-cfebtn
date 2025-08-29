@@ -10,6 +10,7 @@ import VoiceRecorder from '../../components/VoiceRecorder';
 import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
 import { Message, Channel } from '../../types/User';
 import { supabaseService } from '../../services/supabaseService';
+import { supabase } from '../../app/integrations/supabase/client';
 import { debugRealtime } from '../../utils/debugUtils';
 
 export default function ChatScreen() {
@@ -148,10 +149,25 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
+      // Check if the recorded file exists
+      try {
+        const response = await fetch(uri);
+        if (!response.ok) {
+          throw new Error('Recording file not accessible');
+        }
+        console.log('Recording file verified, size:', response.headers.get('content-length'));
+      } catch (error) {
+        console.error('Recording file verification failed:', error);
+        Alert.alert('Error', 'Recording file is not accessible. Please try recording again.');
+        setSending(false);
+        return;
+      }
+
       const message = await supabaseService.sendMessage(id, 'Voice message', 'voice', {
         fileUri: uri,
         duration,
-        mimeType: 'audio/m4a'
+        mimeType: 'audio/m4a',
+        fileName: `voice_${Date.now()}.m4a`
       });
       
       if (message) {
@@ -159,11 +175,11 @@ export default function ChatScreen() {
         debugRealtime.logMessageData(message);
       } else {
         console.error('Failed to send voice message');
-        Alert.alert('Error', 'Failed to send voice message');
+        Alert.alert('Error', 'Failed to send voice message. Please try again.');
       }
     } catch (error) {
       console.error('Error sending voice message:', error);
-      Alert.alert('Error', 'Failed to send voice message');
+      Alert.alert('Error', 'Failed to send voice message. Please try again.');
     } finally {
       setSending(false);
     }
@@ -261,11 +277,28 @@ export default function ChatScreen() {
         )}
 
         {message.type === 'voice' && message.fileUri && (
-          <VoiceMessagePlayer
-            uri={message.fileUri}
-            duration={message.duration || 0}
-            isOwnMessage={isOwnMessage}
-          />
+          <View>
+            <VoiceMessagePlayer
+              uri={message.fileUri}
+              duration={message.duration || 0}
+              isOwnMessage={isOwnMessage}
+            />
+            {/* Debug info for voice messages */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <Icon 
+                name={message.fileUri.startsWith('http') ? "cloud-outline" : "phone-portrait-outline"} 
+                size={10} 
+                color={isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary} 
+              />
+              <Text style={{ 
+                color: isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary,
+                fontSize: 10,
+                marginLeft: 4
+              }}>
+                {message.fileUri.startsWith('http') ? 'Cloud' : 'Local'} • {message.fileUri.length > 40 ? message.fileUri.substring(0, 40) + '...' : message.fileUri}
+              </Text>
+            </View>
+          </View>
         )}
 
         {message.type === 'image' && (
@@ -418,6 +451,33 @@ export default function ChatScreen() {
           style={{ marginLeft: 'auto', padding: 8 }}
         >
           <Icon name="bug-outline" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+        
+        {/* Storage test button */}
+        <TouchableOpacity 
+          onPress={async () => {
+            try {
+              console.log('Testing storage bucket...');
+              const testBlob = new Blob(['test'], { type: 'text/plain' });
+              const { data, error } = await supabase.storage
+                .from('files')
+                .upload(`test_${Date.now()}.txt`, testBlob);
+              
+              if (error) {
+                console.error('Storage test failed:', error);
+                Alert.alert('Storage Test', `Failed: ${error.message}`);
+              } else {
+                console.log('Storage test successful:', data);
+                Alert.alert('Storage Test', 'Success! Storage is working.');
+              }
+            } catch (error) {
+              console.error('Storage test exception:', error);
+              Alert.alert('Storage Test', `Exception: ${error.message}`);
+            }
+          }}
+          style={{ padding: 8 }}
+        >
+          <Icon name="cloud-upload-outline" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
 

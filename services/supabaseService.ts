@@ -586,6 +586,67 @@ class SupabaseService {
     };
   }
 
+  // File upload methods
+  async uploadFile(fileUri: string, fileName: string, mimeType?: string): Promise<string | null> {
+    try {
+      console.log('Uploading file to Supabase Storage:', { fileUri, fileName, mimeType });
+
+      // Create a unique file name to avoid conflicts
+      const timestamp = Date.now();
+      const uniqueFileName = `${timestamp}_${fileName}`;
+      const filePath = `uploads/${uniqueFileName}`;
+
+      // Read the file as blob
+      const response = await fetch(fileUri);
+      if (!response.ok) {
+        console.error('Failed to fetch file:', response.status, response.statusText);
+        return null;
+      }
+      
+      const blob = await response.blob();
+      console.log('File blob created, size:', blob.size, 'type:', blob.type);
+
+      if (blob.size === 0) {
+        console.error('File is empty, cannot upload');
+        return null;
+      }
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('files')
+        .upload(filePath, blob, {
+          contentType: mimeType || blob.type || 'application/octet-stream',
+          upsert: false
+        });
+
+      if (error) {
+        console.error('Error uploading file to storage:', error);
+        
+        // If bucket doesn't exist, try to create it
+        if (error.message.includes('Bucket not found')) {
+          console.log('Bucket not found, trying to create it...');
+          // For now, just return null and use local URI as fallback
+          return null;
+        }
+        
+        return null;
+      }
+
+      console.log('File uploaded successfully:', data.path);
+
+      // Get the public URL
+      const { data: publicUrlData } = supabase.storage
+        .from('files')
+        .getPublicUrl(data.path);
+
+      console.log('Public URL generated:', publicUrlData.publicUrl);
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      console.error('Exception uploading file:', error);
+      return null;
+    }
+  }
+
   // Message methods
   async sendMessage(
     channelId: string, 
@@ -607,6 +668,28 @@ class SupabaseService {
     console.log('Sending message:', { channelId, content, type, options });
     
     try {
+      let attachmentUrl = options?.fileUri;
+
+      // Upload file to storage if it's a local file URI
+      if (options?.fileUri && (type === 'voice' || type === 'file' || type === 'image')) {
+        console.log('Uploading file before sending message...');
+        
+        let fileName = options.fileName || `${type}_${Date.now()}`;
+        if (type === 'voice' && !fileName.includes('.')) {
+          fileName += '.m4a';
+        }
+
+        const uploadedUrl = await this.uploadFile(options.fileUri, fileName, options.mimeType);
+        if (uploadedUrl) {
+          attachmentUrl = uploadedUrl;
+          console.log('File uploaded successfully, using storage URL:', uploadedUrl);
+        } else {
+          console.warn('Failed to upload file, using original URI as fallback');
+          // Continue with original URI as fallback
+          attachmentUrl = options.fileUri;
+        }
+      }
+
       const messageData: any = {
         chat_id: channelId,
         sender_id: this.currentUser.id,
@@ -615,7 +698,7 @@ class SupabaseService {
       };
 
       // Add optional fields if provided
-      if (options?.fileUri) messageData.attachment_url = options.fileUri;
+      if (attachmentUrl) messageData.attachment_url = attachmentUrl;
       if (options?.fileName) messageData.file_name = options.fileName;
       if (options?.mimeType) messageData.mime_type = options.mimeType;
       if (options?.duration) messageData.duration_sec = options.duration;
