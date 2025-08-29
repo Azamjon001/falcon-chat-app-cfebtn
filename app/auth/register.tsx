@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { commonStyles, buttonStyles, colors } from '../../styles/commonStyles';
 import Button from '../../components/Button';
 import TextInput from '../../components/TextInput';
-import { storage } from '../../data/storage';
+import { supabaseService } from '../../services/supabaseService';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
@@ -13,6 +13,35 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleDebugShowUsers = async () => {
+    try {
+      const users = await supabaseService.getAllUsers();
+      const userList = users.map(u => `${u.username} (${u.name})`).join('\n');
+      Alert.alert('Debug: All Users', userList || 'No users found');
+    } catch (error) {
+      console.error('Debug error:', error);
+      Alert.alert('Debug Error', 'Failed to fetch users');
+    }
+  };
+
+  const handleDebugClearData = async () => {
+    Alert.alert(
+      'Clear All Data',
+      'This will delete ALL users, channels, and messages. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await supabaseService.clearAllData();
+            Alert.alert(success ? 'Success' : 'Error', success ? 'All data cleared' : 'Failed to clear data');
+          }
+        }
+      ]
+    );
+  };
 
   const handleRegister = async () => {
     console.log('Registration attempt:', { name, username });
@@ -34,16 +63,23 @@ export default function RegisterScreen() {
 
     const formattedUsername = username.startsWith('@') ? username : `@${username}`;
     
-    // Check if username is unique
-    if (!storage.isUsernameUnique(formattedUsername)) {
-      Alert.alert('Error', 'This username is already taken. Please choose a different one.');
-      return;
-    }
-
     setLoading(true);
     
     try {
-      const user = storage.createUser(name.trim(), formattedUsername, password);
+      console.log('Checking username uniqueness for:', formattedUsername);
+      
+      // Check if username is unique
+      const isUnique = await supabaseService.isUsernameUnique(formattedUsername);
+      console.log('Username uniqueness result:', isUnique);
+      
+      if (!isUnique) {
+        console.log('Username is already taken:', formattedUsername);
+        Alert.alert('Error', 'This username is already taken. Please choose a different one.');
+        return;
+      }
+
+      console.log('Creating user with unique username:', formattedUsername);
+      const user = await supabaseService.createUser(name.trim(), formattedUsername, password);
       
       if (user) {
         console.log('Registration successful:', user.username);
@@ -53,9 +89,18 @@ export default function RegisterScreen() {
           [{ text: 'OK', onPress: () => router.replace('/auth/login') }]
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      Alert.alert('Error', 'Registration failed. Please try again.');
+      const errorMessage = error.message || 'Registration failed. Please try again.';
+      
+      // Show more specific error messages
+      if (errorMessage.includes('Username already exists')) {
+        Alert.alert('Error', 'This username is already taken. Please choose a different one.');
+      } else if (errorMessage.includes('Failed to check username')) {
+        Alert.alert('Error', 'Unable to verify username availability. Please check your connection and try again.');
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -110,6 +155,7 @@ export default function RegisterScreen() {
                 text={loading ? "Creating Account..." : "Create Account"}
                 onPress={handleRegister}
                 style={buttonStyles.primary}
+                disabled={loading}
               />
               
               <Button
@@ -117,7 +163,24 @@ export default function RegisterScreen() {
                 onPress={() => router.back()}
                 style={buttonStyles.secondary}
                 textStyle={{ color: colors.primary }}
+                disabled={loading}
               />
+
+              {/* Debug buttons - remove in production */}
+              <View style={{ marginTop: 20, opacity: 0.5 }}>
+                <Button
+                  text="Debug: Show All Users"
+                  onPress={handleDebugShowUsers}
+                  style={[buttonStyles.secondary, { marginBottom: 8 }]}
+                  textStyle={{ color: colors.textSecondary, fontSize: 12 }}
+                />
+                <Button
+                  text="Debug: Clear All Data"
+                  onPress={handleDebugClearData}
+                  style={buttonStyles.secondary}
+                  textStyle={{ color: colors.error, fontSize: 12 }}
+                />
+              </View>
             </View>
           </View>
         </View>
