@@ -92,10 +92,20 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 12,
+        paddingHorizontal: isRecording ? 16 : 12,
+        paddingVertical: 12,
         backgroundColor: isRecording ? colors.danger : colors.primary,
         borderRadius: 25,
-        minWidth: isRecording ? 120 : 50,
+        minWidth: isRecording ? 120 : 48,
+        height: 48,
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
       }, style]}
     >
       <Icon 
@@ -104,14 +114,24 @@ export default function VoiceRecorder({ onRecordingComplete, style }: VoiceRecor
         color="white" 
       />
       {isRecording && (
-        <Text style={{ 
-          marginLeft: 8, 
-          color: 'white', 
-          fontWeight: '500',
-          fontSize: 14,
-        }}>
-          {formatDuration(recordingDuration)}
-        </Text>
+        <>
+          <View style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: 'white',
+            marginLeft: 8,
+            marginRight: 4,
+            opacity: recordingDuration % 2 === 0 ? 1 : 0.3, // Blinking effect
+          }} />
+          <Text style={{ 
+            color: 'white', 
+            fontWeight: '600',
+            fontSize: 14,
+          }}>
+            {formatDuration(recordingDuration)}
+          </Text>
+        </>
       )}
     </TouchableOpacity>
   );

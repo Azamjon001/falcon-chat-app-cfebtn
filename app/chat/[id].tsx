@@ -7,6 +7,7 @@ import TextInput from '../../components/TextInput';
 import Icon from '../../components/Icon';
 import FilePicker from '../../components/FilePicker';
 import VoiceRecorder from '../../components/VoiceRecorder';
+import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
 import { Message, Channel } from '../../types/User';
 import { supabaseService } from '../../services/supabaseService';
 
@@ -184,6 +185,7 @@ export default function ChatScreen() {
             borderRadius: 16,
             marginVertical: 2,
             maxWidth: '80%',
+            minWidth: message.type === 'voice' ? 250 : undefined,
           },
           isOwnMessage ? { borderBottomRightRadius: 4 } : { borderBottomLeftRadius: 4 }
         ]}
@@ -194,20 +196,12 @@ export default function ChatScreen() {
           </Text>
         )}
 
-        {message.type === 'voice' && (
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Icon 
-              name="play-circle-outline" 
-              size={24} 
-              color={isOwnMessage ? 'white' : colors.primary} 
-            />
-            <Text style={{ 
-              color: isOwnMessage ? 'white' : colors.text, 
-              marginLeft: 8 
-            }}>
-              Voice message ({message.duration}s)
-            </Text>
-          </View>
+        {message.type === 'voice' && message.fileUri && (
+          <VoiceMessagePlayer
+            uri={message.fileUri}
+            duration={message.duration || 0}
+            isOwnMessage={isOwnMessage}
+          />
         )}
 
         {message.type === 'image' && message.fileUri && (
@@ -357,12 +351,6 @@ export default function ChatScreen() {
           <VoiceRecorder
             onRecordingComplete={handleVoiceRecordingComplete}
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
               marginRight: 8,
             }}
           />
