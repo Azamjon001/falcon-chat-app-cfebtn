@@ -8,8 +8,7 @@ import Icon from '../../components/Icon';
 import FilePicker from '../../components/FilePicker';
 import VoiceRecorder from '../../components/VoiceRecorder';
 import VoiceMessagePlayer from '../../components/VoiceMessagePlayer';
-import ProfilePicture from '../../components/ProfilePicture';
-import { Message, Channel, User } from '../../types/User';
+import { Message, Channel } from '../../types/User';
 import { supabaseService } from '../../services/supabaseService';
 import { supabase } from '../../app/integrations/supabase/client';
 import { debugRealtime } from '../../utils/debugUtils';
@@ -21,7 +20,6 @@ export default function ChatScreen() {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [messageUsers, setMessageUsers] = useState<Map<string, User>>(new Map());
   const scrollViewRef = useRef<ScrollView>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -53,15 +51,6 @@ export default function ChatScreen() {
       });
       
       setMessages(messageList);
-
-      // Load user data for all message senders
-      const userIds = [...new Set(messageList.map(msg => msg.userId))];
-      if (userIds.length > 0) {
-        const users = await supabaseService.getUsersByIds(userIds);
-        setMessageUsers(users);
-        console.log('Loaded user data for', users.size, 'users');
-      }
-
       setTimeout(scrollToBottom, 100);
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -82,17 +71,9 @@ export default function ChatScreen() {
     }
 
     // Set up new subscription
-    unsubscribeRef.current = supabaseService.subscribeToMessages(id, async (newMessage) => {
+    unsubscribeRef.current = supabaseService.subscribeToMessages(id, (newMessage) => {
       console.log('=== REAL-TIME MESSAGE RECEIVED ===');
       debugRealtime.logMessageData(newMessage);
-      
-      // Load user data for the new message sender if not already loaded
-      if (!messageUsers.has(newMessage.userId)) {
-        const user = await supabaseService.getUserById(newMessage.userId);
-        if (user) {
-          setMessageUsers(prev => new Map(prev.set(newMessage.userId, user)));
-        }
-      }
       
       setMessages(prev => {
         // Check if message already exists to avoid duplicates
@@ -111,7 +92,7 @@ export default function ChatScreen() {
         return updatedMessages;
       });
     });
-  }, [id, messageUsers]);
+  }, [id]);
 
   useEffect(() => {
     if (id) {
@@ -283,202 +264,167 @@ export default function ChatScreen() {
   const renderMessage = (message: Message) => {
     const currentUser = supabaseService.getCurrentUser();
     const isOwnMessage = message.userId === currentUser?.id;
-    const messageUser = messageUsers.get(message.userId);
 
     console.log('Rendering message:', {
       id: message.id,
       type: message.type,
       fileUri: message.fileUri,
-      content: message.content,
-      user: messageUser?.name
+      content: message.content
     });
 
     return (
       <View
         key={message.id}
-        style={{
-          flexDirection: 'row',
-          alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
-          marginVertical: 2,
-          maxWidth: '85%',
-        }}
+        style={[
+          {
+            alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+            backgroundColor: isOwnMessage ? colors.primary : colors.cardBackground,
+            padding: 12,
+            borderRadius: 16,
+            marginVertical: 2,
+            maxWidth: '80%',
+            minWidth: message.type === 'voice' ? 250 : undefined,
+          },
+          isOwnMessage ? { borderBottomRightRadius: 4 } : { borderBottomLeftRadius: 4 }
+        ]}
       >
-        {/* Profile picture for other users' messages */}
-        {!isOwnMessage && (
-          <View style={{ marginRight: 8, alignSelf: 'flex-end' }}>
-            <ProfilePicture user={messageUser} size={32} />
-          </View>
-        )}
-
-        <View
-          style={[
-            {
-              backgroundColor: isOwnMessage ? colors.primary : colors.cardBackground,
-              padding: 12,
-              borderRadius: 16,
-              minWidth: message.type === 'voice' ? 250 : undefined,
-              flex: 1,
-            },
-            isOwnMessage ? { borderBottomRightRadius: 4 } : { borderBottomLeftRadius: 4 }
-          ]}
-        >
-          {/* Show sender name for group chats (non-direct messages) */}
-          {!isOwnMessage && channel && !channel.description?.includes('Direct message with') && messageUser && (
-            <Text style={{
-              color: colors.primary,
-              fontSize: 12,
-              fontWeight: '600',
-              marginBottom: 4,
-            }}>
-              {messageUser.name}
-            </Text>
-          )}
-
-          {message.type === 'text' && (
-            <Text style={{ color: isOwnMessage ? 'white' : colors.text }}>
-              {message.content}
-            </Text>
-          )}
-
-          {message.type === 'voice' && message.fileUri && (
-            <View>
-              <VoiceMessagePlayer
-                uri={message.fileUri}
-                duration={message.duration || 0}
-                isOwnMessage={isOwnMessage}
-              />
-              {/* Debug info for voice messages */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                <Icon 
-                  name={message.fileUri.startsWith('http') ? "cloud-outline" : "phone-portrait-outline"} 
-                  size={10} 
-                  color={isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary} 
-                />
-                <Text style={{ 
-                  color: isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary,
-                  fontSize: 10,
-                  marginLeft: 4
-                }}>
-                  {message.fileUri.startsWith('http') ? 'Cloud' : 'Local'} • {message.fileUri.length > 40 ? message.fileUri.substring(0, 40) + '...' : message.fileUri}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {message.type === 'image' && (
-            <View>
-              {message.fileUri ? (
-                <View>
-                  <Text style={{ 
-                    color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
-                    fontSize: 10,
-                    marginBottom: 4
-                  }}>
-                    URI: {message.fileUri.substring(0, 50)}...
-                  </Text>
-                  <Image 
-                    source={{ uri: message.fileUri }} 
-                    style={{ 
-                      width: 200, 
-                      height: 150, 
-                      borderRadius: 8,
-                      backgroundColor: colors.cardBackground 
-                    }}
-                    resizeMode="cover"
-                    onError={(error) => {
-                      console.error('Image load error for URI:', message.fileUri);
-                      console.error('Error details:', error.nativeEvent.error);
-                    }}
-                    onLoad={() => {
-                      console.log('Image loaded successfully:', message.fileUri);
-                    }}
-                    onLoadStart={() => {
-                      console.log('Image load started:', message.fileUri);
-                    }}
-                  />
-                </View>
-              ) : (
-                <View style={{
-                  width: 200,
-                  height: 150,
-                  borderRadius: 8,
-                  backgroundColor: colors.cardBackground,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.border
-                }}>
-                  <Icon name="image-outline" size={48} color={colors.textSecondary} />
-                  <Text style={{ 
-                    color: colors.textSecondary, 
-                    marginTop: 8,
-                    fontSize: 12
-                  }}>
-                    No image URI
-                  </Text>
-                </View>
-              )}
-              {message.content !== 'Image' && (
-                <Text style={{ 
-                  color: isOwnMessage ? 'white' : colors.text, 
-                  marginTop: 4 
-                }}>
-                  {message.content}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {message.type === 'file' && (
-            <TouchableOpacity 
-              style={{ flexDirection: 'row', alignItems: 'center' }}
-              onPress={() => {
-                if (message.fileUri) {
-                  console.log('Opening file:', message.fileUri);
-                  Alert.alert('File', `File: ${message.fileName || message.content}\nURI: ${message.fileUri}`);
-                }
-              }}
-            >
-              <Icon 
-                name="document-outline" 
-                size={24} 
-                color={isOwnMessage ? 'white' : colors.primary} 
-              />
-              <View style={{ marginLeft: 8, flex: 1 }}>
-                <Text style={{ 
-                  color: isOwnMessage ? 'white' : colors.text,
-                  fontWeight: '600'
-                }}>
-                  {message.fileName || message.content}
-                </Text>
-                {message.fileSize && (
-                  <Text style={{ 
-                    color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
-                    fontSize: 12
-                  }}>
-                    {formatFileSize(message.fileSize)}
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
-
-          <Text style={{
-            color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
-            fontSize: 11,
-            marginTop: 4,
-            textAlign: 'right'
-          }}>
-            {formatTime(message.timestamp)}
+        {message.type === 'text' && (
+          <Text style={{ color: isOwnMessage ? 'white' : colors.text }}>
+            {message.content}
           </Text>
-        </View>
+        )}
 
-        {/* Profile picture for own messages */}
-        {isOwnMessage && (
-          <View style={{ marginLeft: 8, alignSelf: 'flex-end' }}>
-            <ProfilePicture user={currentUser} size={32} />
+        {message.type === 'voice' && message.fileUri && (
+          <View>
+            <VoiceMessagePlayer
+              uri={message.fileUri}
+              duration={message.duration || 0}
+              isOwnMessage={isOwnMessage}
+            />
+            {/* Debug info for voice messages */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <Icon 
+                name={message.fileUri.startsWith('http') ? "cloud-outline" : "phone-portrait-outline"} 
+                size={10} 
+                color={isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary} 
+              />
+              <Text style={{ 
+                color: isOwnMessage ? 'rgba(255,255,255,0.5)' : colors.textSecondary,
+                fontSize: 10,
+                marginLeft: 4
+              }}>
+                {message.fileUri.startsWith('http') ? 'Cloud' : 'Local'} • {message.fileUri.length > 40 ? message.fileUri.substring(0, 40) + '...' : message.fileUri}
+              </Text>
+            </View>
           </View>
         )}
+
+        {message.type === 'image' && (
+          <View>
+            {message.fileUri ? (
+              <View>
+                <Text style={{ 
+                  color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+                  fontSize: 10,
+                  marginBottom: 4
+                }}>
+                  URI: {message.fileUri.substring(0, 50)}...
+                </Text>
+                <Image 
+                  source={{ uri: message.fileUri }} 
+                  style={{ 
+                    width: 200, 
+                    height: 150, 
+                    borderRadius: 8,
+                    backgroundColor: colors.cardBackground 
+                  }}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.error('Image load error for URI:', message.fileUri);
+                    console.error('Error details:', error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('Image loaded successfully:', message.fileUri);
+                  }}
+                  onLoadStart={() => {
+                    console.log('Image load started:', message.fileUri);
+                  }}
+                />
+              </View>
+            ) : (
+              <View style={{
+                width: 200,
+                height: 150,
+                borderRadius: 8,
+                backgroundColor: colors.cardBackground,
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border
+              }}>
+                <Icon name="image-outline" size={48} color={colors.textSecondary} />
+                <Text style={{ 
+                  color: colors.textSecondary, 
+                  marginTop: 8,
+                  fontSize: 12
+                }}>
+                  No image URI
+                </Text>
+              </View>
+            )}
+            {message.content !== 'Image' && (
+              <Text style={{ 
+                color: isOwnMessage ? 'white' : colors.text, 
+                marginTop: 4 
+              }}>
+                {message.content}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {message.type === 'file' && (
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+            onPress={() => {
+              if (message.fileUri) {
+                console.log('Opening file:', message.fileUri);
+                Alert.alert('File', `File: ${message.fileName || message.content}\nURI: ${message.fileUri}`);
+              }
+            }}
+          >
+            <Icon 
+              name="document-outline" 
+              size={24} 
+              color={isOwnMessage ? 'white' : colors.primary} 
+            />
+            <View style={{ marginLeft: 8, flex: 1 }}>
+              <Text style={{ 
+                color: isOwnMessage ? 'white' : colors.text,
+                fontWeight: '600'
+              }}>
+                {message.fileName || message.content}
+              </Text>
+              {message.fileSize && (
+                <Text style={{ 
+                  color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+                  fontSize: 12
+                }}>
+                  {formatFileSize(message.fileSize)}
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+
+        <Text style={{
+          color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+          fontSize: 11,
+          marginTop: 4,
+          textAlign: 'right'
+        }}>
+          {formatTime(message.timestamp)}
+        </Text>
       </View>
     );
   };
@@ -513,28 +459,14 @@ export default function ChatScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        
-        {/* Channel/User info with profile picture */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 16, flex: 1 }}>
-          {channel.otherUser && (
-            <ProfilePicture user={channel.otherUser} size={36} style={{ marginRight: 12 }} />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 18 }]}>
-              {channel.name}
-            </Text>
-            {channel.otherUser && (
-              <Text style={[commonStyles.textSecondary, { fontSize: 12 }]}>
-                {channel.otherUser.username}
-              </Text>
-            )}
-          </View>
-        </View>
+        <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 18, marginLeft: 16 }]}>
+          {channel.name}
+        </Text>
         
         {/* Debug button */}
         <TouchableOpacity 
           onPress={() => debugRealtime.testMessageSending(id!)}
-          style={{ padding: 8 }}
+          style={{ marginLeft: 'auto', padding: 8 }}
         >
           <Icon name="bug-outline" size={20} color={colors.textSecondary} />
         </TouchableOpacity>

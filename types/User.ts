@@ -16,7 +16,6 @@ export interface Channel {
   createdBy: string;
   members: string[];
   createdAt: Date;
-  otherUser?: User; // For direct messages, contains the other user's info
 }
 
 export interface Message {

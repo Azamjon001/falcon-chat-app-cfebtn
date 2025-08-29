@@ -8,7 +8,6 @@ import PromptModal from '../../components/PromptModal';
 import AddUserModal from '../../components/AddUserModal';
 import Icon from '../../components/Icon';
 import Button from '../../components/Button';
-import ProfilePicture from '../../components/ProfilePicture';
 import { Channel } from '../../types/User';
 
 export default function ChannelsScreen() {
@@ -212,17 +211,24 @@ export default function ChannelsScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={commonStyles.row}>
-                    {/* Show profile picture for direct messages */}
-                    <ProfilePicture 
-                      user={channel.otherUser} 
-                      size={40}
-                    />
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: colors.secondary || colors.cardBackground,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>
+                        {channel.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
                     <View style={commonStyles.flex1}>
                       <Text style={[commonStyles.text, { fontWeight: '600' }]}>
                         {channel.name}
                       </Text>
                       <Text style={commonStyles.textSecondary}>
-                        {channel.otherUser?.username || 'Direct message'}
+                        Direct message
                       </Text>
                     </View>
                     <Icon name="chevron-forward" size={20} color={colors.textSecondary} />

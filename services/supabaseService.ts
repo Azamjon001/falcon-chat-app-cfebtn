@@ -40,7 +40,6 @@ export interface DatabaseMessage {
 class SupabaseService {
   private currentUser: User | null = null;
   private messageSubscriptions: Map<string, any> = new Map();
-  private userCache: Map<string, User> = new Map(); // Cache for user data
 
   // User methods
   async createUser(name: string, username: string, password: string): Promise<User> {
@@ -137,8 +136,6 @@ class SupabaseService {
       };
 
       this.currentUser = user;
-      // Cache the current user
-      this.userCache.set(user.id, user);
       console.log('Login successful:', user.username);
       return user;
     } catch (error) {
@@ -158,7 +155,6 @@ class SupabaseService {
       subscription.unsubscribe();
     });
     this.messageSubscriptions.clear();
-    this.userCache.clear();
     this.currentUser = null;
   }
 
@@ -182,8 +178,6 @@ class SupabaseService {
       }
 
       this.currentUser = { ...this.currentUser, ...updates };
-      // Update cache
-      this.userCache.set(this.currentUser.id, this.currentUser);
       return true;
     } catch (error) {
       console.error('Exception updating profile:', error);
@@ -208,20 +202,15 @@ class SupabaseService {
         return [];
       }
 
-      const users: User[] = data.map(dbUser => {
-        const user = {
-          id: dbUser.id,
-          name: dbUser.name,
-          username: dbUser.username,
-          password: dbUser.password,
-          avatar: dbUser.photo_url || undefined,
-          backgroundImage: dbUser.wallpaper_url || undefined,
-          createdAt: new Date(dbUser.created_at)
-        };
-        // Cache the user
-        this.userCache.set(user.id, user);
-        return user;
-      });
+      const users: User[] = data.map(dbUser => ({
+        id: dbUser.id,
+        name: dbUser.name,
+        username: dbUser.username,
+        password: dbUser.password,
+        avatar: dbUser.photo_url || undefined,
+        backgroundImage: dbUser.wallpaper_url || undefined,
+        createdAt: new Date(dbUser.created_at)
+      }));
 
       return users;
     } catch (error) {
@@ -231,11 +220,6 @@ class SupabaseService {
   }
 
   async getUserById(id: string): Promise<User | undefined> {
-    // Check cache first
-    if (this.userCache.has(id)) {
-      return this.userCache.get(id);
-    }
-
     try {
       const { data, error } = await supabase
         .from('app_users')
@@ -247,7 +231,7 @@ class SupabaseService {
         return undefined;
       }
 
-      const user = {
+      return {
         id: data.id,
         name: data.name,
         username: data.username,
@@ -256,10 +240,6 @@ class SupabaseService {
         backgroundImage: data.wallpaper_url || undefined,
         createdAt: new Date(data.created_at)
       };
-
-      // Cache the user
-      this.userCache.set(user.id, user);
-      return user;
     } catch (error) {
       console.error('Exception getting user by ID:', error);
       return undefined;
@@ -280,7 +260,7 @@ class SupabaseService {
         return undefined;
       }
 
-      const user = {
+      return {
         id: data.id,
         name: data.name,
         username: data.username,
@@ -289,61 +269,10 @@ class SupabaseService {
         backgroundImage: data.wallpaper_url || undefined,
         createdAt: new Date(data.created_at)
       };
-
-      // Cache the user
-      this.userCache.set(user.id, user);
-      return user;
     } catch (error) {
       console.error('Exception getting user by username:', error);
       return undefined;
     }
-  }
-
-  // Method to get multiple users by IDs (for efficient profile picture loading)
-  async getUsersByIds(ids: string[]): Promise<Map<string, User>> {
-    const result = new Map<string, User>();
-    const uncachedIds: string[] = [];
-
-    // Check cache first
-    for (const id of ids) {
-      if (this.userCache.has(id)) {
-        result.set(id, this.userCache.get(id)!);
-      } else {
-        uncachedIds.push(id);
-      }
-    }
-
-    // Fetch uncached users
-    if (uncachedIds.length > 0) {
-      try {
-        const { data, error } = await supabase
-          .from('app_users')
-          .select('*')
-          .in('id', uncachedIds);
-
-        if (!error && data) {
-          for (const dbUser of data) {
-            const user = {
-              id: dbUser.id,
-              name: dbUser.name,
-              username: dbUser.username,
-              password: dbUser.password,
-              avatar: dbUser.photo_url || undefined,
-              backgroundImage: dbUser.wallpaper_url || undefined,
-              createdAt: new Date(dbUser.created_at)
-            };
-            
-            // Cache and add to result
-            this.userCache.set(user.id, user);
-            result.set(user.id, user);
-          }
-        }
-      } catch (error) {
-        console.error('Exception getting users by IDs:', error);
-      }
-    }
-
-    return result;
   }
 
   // Direct messaging methods
@@ -415,8 +344,7 @@ class SupabaseService {
             description: `Direct message with ${otherUser.username}`,
             createdBy: chat.user1_id,
             members: [chat.user1_id, chat.user2_id],
-            createdAt: new Date(chat.created_at),
-            otherUser: otherUser // Add other user info for profile picture
+            createdAt: new Date(chat.created_at)
           });
         }
       }
