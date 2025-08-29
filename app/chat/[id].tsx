@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { commonStyles, colors } from '../../styles/commonStyles';
@@ -20,7 +20,14 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const loadChannelData = useCallback(async () => {
+  useEffect(() => {
+    if (id) {
+      loadChannelData();
+      loadMessages();
+    }
+  }, [id]);
+
+  const loadChannelData = async () => {
     console.log('Loading channel data for:', id);
     try {
       const channels = await supabaseService.getChannels();
@@ -29,9 +36,9 @@ export default function ChatScreen() {
     } catch (error) {
       console.error('Error loading channel data:', error);
     }
-  }, [id]);
+  };
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = async () => {
     if (!id) return;
     
     console.log('Loading messages for channel:', id);
@@ -47,14 +54,7 @@ export default function ChatScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
-
-  useEffect(() => {
-    if (id) {
-      loadChannelData();
-      loadMessages();
-    }
-  }, [id, loadChannelData, loadMessages]);
+  };
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !id || sending) return;
