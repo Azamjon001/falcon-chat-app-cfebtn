@@ -2,14 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import TextInput from '../../components/TextInput';
 import Icon from '../../components/Icon';
-import ImagePickerButton from '../../components/ImagePicker';
 import VoiceRecorder from '../../components/VoiceRecorder';
+import ImagePickerButton from '../../components/ImagePicker';
+import { storage } from '../../data/storage';
 import { Message, Channel } from '../../types/User';
-import { supabaseService } from '../../services/supabaseService';
-import * as DocumentPicker from 'expo-document-picker';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,7 +17,7 @@ export default function ChatScreen() {
   const [newMessage, setNewMessage] = useState('');
   const [channel, setChannel] = useState<Channel | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
+  const [showAttachmentOptions, setShowAttachmentOptions] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -27,28 +27,22 @@ export default function ChatScreen() {
     }
   }, [id]);
 
-  const loadChannelData = async () => {
-    console.log('Loading channel data for:', id);
-    try {
-      const channels = await supabaseService.getChannels();
-      const foundChannel = channels.find(c => c.id === id);
-      setChannel(foundChannel || null);
-    } catch (error) {
-      console.error('Error loading channel data:', error);
-    }
+  const loadChannelData = () => {
+    console.log('Loading channel data for ID:', id);
+    const channels = storage.getChannels();
+    const foundChannel = channels.find(c => c.id === id);
+    setChannel(foundChannel || null);
   };
 
-  const loadMessages = async () => {
+  const loadMessages = () => {
     if (!id) return;
     
     console.log('Loading messages for channel:', id);
     setLoading(true);
-    
     try {
-      const messageList = await supabaseService.getMessages(id);
-      setMessages(messageList);
-      console.log('Messages loaded:', messageList.length);
-      setTimeout(scrollToBottom, 100);
+      const channelMessages = storage.getMessages(id);
+      setMessages(channelMessages);
+      console.log('Loaded messages:', channelMessages.length);
     } catch (error) {
       console.error('Error loading messages:', error);
     } finally {
@@ -56,107 +50,87 @@ export default function ChatScreen() {
     }
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !id || sending) return;
+  const sendMessage = () => {
+    if (!newMessage.trim() || !id) return;
 
-    const messageContent = newMessage.trim();
-    setNewMessage('');
-    setSending(true);
-
-    try {
-      const message = await supabaseService.sendMessage(id, messageContent, 'text');
-      if (message) {
-        setMessages(prev => [...prev, message]);
-        scrollToBottom();
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message');
-    } finally {
-      setSending(false);
+    console.log('Sending message:', newMessage.trim());
+    const message = storage.sendMessage(id, newMessage.trim());
+    
+    if (message) {
+      setMessages(prev => [...prev, message]);
+      setNewMessage('');
+      scrollToBottom();
     }
   };
 
-  const handleVoiceRecordingComplete = async (uri: string, duration: number) => {
+  const handleVoiceRecordingComplete = (uri: string, duration: number) => {
     if (!id) return;
-
-    console.log('Voice recording completed:', { uri, duration });
-    setSending(true);
-
-    try {
-      const message = await supabaseService.sendMessage(id, 'Voice message', 'voice', {
-        fileUri: uri,
-        duration,
-        mimeType: 'audio/m4a'
-      });
-      
-      if (message) {
-        setMessages(prev => [...prev, message]);
-        scrollToBottom();
-      }
-    } catch (error) {
-      console.error('Error sending voice message:', error);
-      Alert.alert('Error', 'Failed to send voice message');
-    } finally {
-      setSending(false);
+    
+    console.log('Voice recording complete:', { uri, duration });
+    const message = storage.sendMessage(
+      id, 
+      `Voice message (${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')})`,
+      'voice',
+      { fileUri: uri, duration, mimeType: 'audio/m4a' }
+    );
+    
+    if (message) {
+      setMessages(prev => [...prev, message]);
+      scrollToBottom();
     }
   };
 
-  const handleImageSelected = async (uri: string) => {
+  const handleImageSelected = (uri: string) => {
     if (!id) return;
-
-    console.log('Image selected:', uri);
-    setSending(true);
-
-    try {
-      const message = await supabaseService.sendMessage(id, 'Image', 'image', {
-        fileUri: uri,
-        mimeType: 'image/jpeg'
-      });
-      
-      if (message) {
-        setMessages(prev => [...prev, message]);
-        scrollToBottom();
-      }
-    } catch (error) {
-      console.error('Error sending image:', error);
-      Alert.alert('Error', 'Failed to send image');
-    } finally {
-      setSending(false);
+    
+    console.log('Image selected for sharing:', uri);
+    const message = storage.sendMessage(
+      id,
+      'Photo',
+      'image',
+      { fileUri: uri, mimeType: 'image/jpeg' }
+    );
+    
+    if (message) {
+      setMessages(prev => [...prev, message]);
+      scrollToBottom();
+      setShowAttachmentOptions(false);
     }
   };
 
   const handleFileShare = async () => {
-    if (!id) return;
-
     try {
+      console.log('Opening document picker');
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
       });
 
-      if (!result.canceled && result.assets[0]) {
+      if (!result.canceled && result.assets[0] && id) {
         const file = result.assets[0];
         console.log('File selected:', file);
-        setSending(true);
-
-        const message = await supabaseService.sendMessage(id, file.name, 'file', {
-          fileUri: file.uri,
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.mimeType || 'application/octet-stream'
-        });
+        
+        const message = storage.sendMessage(
+          id,
+          file.name,
+          'file',
+          {
+            fileUri: file.uri,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.mimeType || 'application/octet-stream'
+          }
+        );
         
         if (message) {
           setMessages(prev => [...prev, message]);
           scrollToBottom();
+          setShowAttachmentOptions(false);
         }
       }
     } catch (error) {
-      console.error('Error sharing file:', error);
-      Alert.alert('Error', 'Failed to share file');
-    } finally {
-      setSending(false);
+      console.error('Error picking file:', error);
+      Alert.alert('Error', 'Failed to select file');
     }
   };
 
@@ -172,104 +146,116 @@ export default function ChatScreen() {
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
   };
 
   const renderMessage = (message: Message) => {
-    const currentUser = supabaseService.getCurrentUser();
-    const isOwnMessage = message.userId === currentUser?.id;
+    const user = storage.getUserById(message.userId);
+    const currentUser = storage.getCurrentUser();
+    const isOwnMessage = currentUser?.id === message.userId;
 
     return (
       <View
         key={message.id}
-        style={[
-          {
-            alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
-            backgroundColor: isOwnMessage ? colors.primary : colors.cardBackground,
-            padding: 12,
-            borderRadius: 16,
-            marginVertical: 2,
-            maxWidth: '80%',
-          },
-          isOwnMessage ? { borderBottomRightRadius: 4 } : { borderBottomLeftRadius: 4 }
-        ]}
+        style={{
+          alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+          maxWidth: '80%',
+          marginVertical: 4,
+        }}
       >
-        {message.type === 'text' && (
-          <Text style={{ color: isOwnMessage ? 'white' : colors.text }}>
-            {message.content}
+        {!isOwnMessage && (
+          <Text style={[commonStyles.textSecondary, { fontSize: 12, marginBottom: 2 }]}>
+            {user?.name || 'Unknown User'}
           </Text>
         )}
-
-        {message.type === 'voice' && (
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Icon 
-              name="play-circle-outline" 
-              size={24} 
-              color={isOwnMessage ? 'white' : colors.primary} 
+        <View
+          style={{
+            backgroundColor: isOwnMessage ? colors.primary : colors.backgroundAlt,
+            padding: 12,
+            borderRadius: 16,
+            borderBottomRightRadius: isOwnMessage ? 4 : 16,
+            borderBottomLeftRadius: isOwnMessage ? 16 : 4,
+          }}
+        >
+          {message.type === 'image' && message.fileUri && (
+            <Image
+              source={{ uri: message.fileUri }}
+              style={{
+                width: 200,
+                height: 200,
+                borderRadius: 8,
+                marginBottom: 8,
+                resizeMode: 'cover',
+              }}
             />
-            <Text style={{ 
-              color: isOwnMessage ? 'white' : colors.text, 
-              marginLeft: 8 
-            }}>
-              Voice message ({message.duration}s)
-            </Text>
-          </View>
-        )}
-
-        {message.type === 'image' && message.fileUri && (
-          <View>
-            <Image 
-              source={{ uri: message.fileUri }} 
-              style={{ width: 200, height: 150, borderRadius: 8 }}
-              resizeMode="cover"
-            />
-            {message.content !== 'Image' && (
-              <Text style={{ 
-                color: isOwnMessage ? 'white' : colors.text, 
-                marginTop: 4 
+          )}
+          
+          {message.type === 'voice' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Icon 
+                name="play-circle-outline" 
+                size={24} 
+                color={isOwnMessage ? 'white' : colors.primary} 
+              />
+              <Text style={{
+                marginLeft: 8,
+                color: isOwnMessage ? 'rgba(255,255,255,0.8)' : colors.textSecondary,
+                fontSize: 14,
               }}>
-                {message.content}
+                {message.duration ? `${Math.floor(message.duration / 60)}:${(message.duration % 60).toString().padStart(2, '0')}` : 'Voice message'}
               </Text>
-            )}
-          </View>
-        )}
-
-        {message.type === 'file' && (
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Icon 
-              name="document-outline" 
-              size={24} 
-              color={isOwnMessage ? 'white' : colors.primary} 
-            />
-            <View style={{ marginLeft: 8, flex: 1 }}>
-              <Text style={{ 
-                color: isOwnMessage ? 'white' : colors.text,
-                fontWeight: '600'
-              }}>
-                {message.fileName || message.content}
-              </Text>
-              {message.fileSize && (
-                <Text style={{ 
-                  color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
-                  fontSize: 12
-                }}>
-                  {formatFileSize(message.fileSize)}
-                </Text>
-              )}
             </View>
-          </View>
-        )}
-
-        <Text style={{
-          color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
-          fontSize: 11,
-          marginTop: 4,
-          textAlign: 'right'
-        }}>
-          {formatTime(message.timestamp)}
-        </Text>
+          )}
+          
+          {message.type === 'file' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Icon 
+                name="document-outline" 
+                size={24} 
+                color={isOwnMessage ? 'white' : colors.primary} 
+              />
+              <View style={{ marginLeft: 8, flex: 1 }}>
+                <Text style={{
+                  color: isOwnMessage ? 'white' : colors.text,
+                  fontSize: 14,
+                  fontWeight: '500',
+                }}>
+                  {message.fileName}
+                </Text>
+                {message.fileSize && (
+                  <Text style={{
+                    color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+                    fontSize: 12,
+                  }}>
+                    {formatFileSize(message.fileSize)}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+          
+          <Text
+            style={{
+              color: isOwnMessage ? 'white' : colors.text,
+              fontSize: 16,
+            }}
+          >
+            {message.content}
+          </Text>
+          <Text
+            style={{
+              color: isOwnMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary,
+              fontSize: 11,
+              marginTop: 4,
+              textAlign: 'right',
+            }}
+          >
+            {formatTime(message.timestamp)}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -277,9 +263,9 @@ export default function ChatScreen() {
   if (!channel) {
     return (
       <View style={[commonStyles.container, commonStyles.center]}>
-        <Text style={commonStyles.textSecondary}>Channel not found</Text>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: colors.primary, marginTop: 16 }}>Go Back</Text>
+        <Text style={commonStyles.text}>Channel not found</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
+          <Text style={{ color: colors.primary }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -294,130 +280,142 @@ export default function ChatScreen() {
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 20,
         paddingTop: 60,
         paddingBottom: 16,
         backgroundColor: colors.background,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
       }}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 16 }}>
           <Icon name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 18, marginLeft: 16 }]}>
-          {channel.name}
-        </Text>
+        <View style={commonStyles.flex1}>
+          <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 18 }]}>
+            {channel.name}
+          </Text>
+          <Text style={commonStyles.textSecondary}>
+            {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
+          </Text>
+        </View>
       </View>
 
       {/* Messages */}
       <ScrollView
         ref={scrollViewRef}
         style={commonStyles.flex1}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 20 }}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
       >
-        {loading && (
+        {loading ? (
           <View style={[commonStyles.center, { marginTop: 40 }]}>
             <Text style={commonStyles.textSecondary}>Loading messages...</Text>
           </View>
-        )}
-
-        {!loading && messages.length === 0 && (
-          <View style={[commonStyles.center, { marginTop: 60 }]}>
+        ) : messages.length === 0 ? (
+          <View style={[commonStyles.center, { marginTop: 40 }]}>
             <Icon name="chatbubble-outline" size={64} color={colors.textSecondary} />
             <Text style={[commonStyles.textSecondary, { marginTop: 16, textAlign: 'center' }]}>
-              No messages yet
-            </Text>
-            <Text style={[commonStyles.textSecondary, { marginTop: 8, textAlign: 'center', fontSize: 14 }]}>
-              Start the conversation!
+              No messages yet.{'\n'}Start the conversation!
             </Text>
           </View>
+        ) : (
+          messages.map(renderMessage)
         )}
-
-        {messages.map(renderMessage)}
       </ScrollView>
 
-      {/* Input Area */}
+      {/* Attachment Options */}
+      {showAttachmentOptions && (
+        <View style={{
+          flexDirection: 'row',
+          paddingHorizontal: 20,
+          paddingVertical: 12,
+          backgroundColor: colors.backgroundAlt,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          gap: 12,
+        }}>
+          <ImagePickerButton
+            onImageSelected={handleImageSelected}
+            title="Photo"
+            icon="image-outline"
+            style={{ flex: 1 }}
+          />
+          <TouchableOpacity
+            onPress={handleFileShare}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 12,
+              backgroundColor: colors.background,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Icon name="document-outline" size={20} color={colors.primary} />
+            <Text style={{ 
+              marginLeft: 8, 
+              color: colors.primary, 
+              fontWeight: '500' 
+            }}>
+              File
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Message Input */}
       <View style={{
         flexDirection: 'row',
-        alignItems: 'flex-end',
-        padding: 16,
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
         backgroundColor: colors.background,
         borderTopWidth: 1,
         borderTopColor: colors.border,
+        gap: 12,
       }}>
-        <View style={{ flex: 1, marginRight: 8 }}>
+        <TouchableOpacity 
+          onPress={() => setShowAttachmentOptions(!showAttachmentOptions)}
+        >
+          <Icon 
+            name={showAttachmentOptions ? "close" : "attach-outline"} 
+            size={24} 
+            color={colors.primary} 
+          />
+        </TouchableOpacity>
+        
+        <View style={commonStyles.flex1}>
           <TextInput
             placeholder="Type a message..."
             value={newMessage}
             onChangeText={setNewMessage}
             multiline
-            style={{ maxHeight: 100 }}
+            style={{
+              marginBottom: 0,
+              maxHeight: 100,
+              paddingVertical: 8,
+            }}
+            onSubmitEditing={sendMessage}
           />
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <ImagePickerButton
-            onImageSelected={handleImageSelected}
-            icon="camera-outline"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}
-          />
+        <VoiceRecorder
+          onRecordingComplete={handleVoiceRecordingComplete}
+        />
 
-          <TouchableOpacity
-            onPress={handleFileShare}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}
-          >
-            <Icon name="attach-outline" size={20} color={colors.text} />
-          </TouchableOpacity>
-
-          <VoiceRecorder
-            onRecordingComplete={handleVoiceRecordingComplete}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}
-          />
-
-          <TouchableOpacity
-            onPress={sendMessage}
-            disabled={!newMessage.trim() || sending}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: newMessage.trim() ? colors.primary : colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon 
-              name="send" 
-              size={20} 
-              color={newMessage.trim() ? 'white' : colors.textSecondary} 
-            />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          onPress={sendMessage}
+          disabled={!newMessage.trim()}
+          style={{
+            opacity: newMessage.trim() ? 1 : 0.5,
+          }}
+        >
+          <Icon name="send" size={24} color={colors.primary} />
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
