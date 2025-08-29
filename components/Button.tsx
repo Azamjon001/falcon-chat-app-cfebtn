@@ -1,38 +1,48 @@
 
-import { Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import React from 'react';
+import { TouchableOpacity, Text, ViewStyle, TextStyle } from 'react-native';
 import { colors } from '../styles/commonStyles';
 
 interface ButtonProps {
   text: string;
   onPress: () => void;
-  style?: ViewStyle | ViewStyle[];
+  style?: ViewStyle;
   textStyle?: TextStyle;
+  disabled?: boolean;
 }
 
-export default function Button({ text, onPress, style, textStyle }: ButtonProps) {
+export default function Button({ text, onPress, style, textStyle, disabled = false }: ButtonProps) {
   return (
-    <TouchableOpacity style={[styles.button, style]} onPress={onPress} activeOpacity={0.7}>
-      <Text style={[styles.buttonText, textStyle]}>{text}</Text>
+    <TouchableOpacity
+      onPress={disabled ? undefined : onPress}
+      style={[
+        {
+          backgroundColor: colors.primary,
+          paddingVertical: 12,
+          paddingHorizontal: 24,
+          borderRadius: 8,
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 48,
+          opacity: disabled ? 0.6 : 1,
+        },
+        style,
+      ]}
+      activeOpacity={disabled ? 1 : 0.7}
+      disabled={disabled}
+    >
+      <Text
+        style={[
+          {
+            color: 'white',
+            fontSize: 16,
+            fontWeight: '600',
+          },
+          textStyle,
+        ]}
+      >
+        {text}
+      </Text>
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  button: {
-    backgroundColor: colors.primary,
-    padding: 14,
-    borderRadius: 8,
-    marginTop: 10,
-    width: '100%',
-    boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)',
-    elevation: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-});

@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import TextInput from '../../components/TextInput';
 import Icon from '../../components/Icon';
-import { storage } from '../../data/storage';
+import { supabaseService } from '../../services/supabaseService';
 import { User } from '../../types/User';
 
 export default function SearchScreen() {
@@ -12,7 +12,7 @@ export default function SearchScreen() {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const handleSearch = (query: string) => {
+  const handleSearch = async (query: string) => {
     setSearchQuery(query);
     
     if (query.trim().length === 0) {
@@ -24,11 +24,12 @@ export default function SearchScreen() {
     console.log('Searching for users:', query);
     
     try {
-      const results = storage.searchUsers(query.trim());
+      const results = await supabaseService.searchUsers(query.trim());
       setSearchResults(results);
       console.log('Search results:', results.length);
     } catch (error) {
       console.error('Search error:', error);
+      setSearchResults([]);
     } finally {
       setSearching(false);
     }
@@ -80,6 +81,9 @@ export default function SearchScreen() {
               <Text style={[commonStyles.textSecondary, { marginTop: 16, textAlign: 'center' }]}>
                 No users found for &quot;{searchQuery}&quot;
               </Text>
+              <Text style={[commonStyles.textSecondary, { marginTop: 8, textAlign: 'center', fontSize: 14 }]}>
+                Try searching for a different username or name
+              </Text>
             </View>
           )}
 
@@ -122,8 +126,8 @@ export default function SearchScreen() {
               <Text style={[commonStyles.textSecondary, { marginTop: 16, textAlign: 'center' }]}>
                 Search for users by username or name
               </Text>
-              <Text style={[commonStyles.textSecondary, { marginTop: 8, textAlign: 'center' }]}>
-                Try searching for @john_doe, @jane_smith, or @bob_wilson
+              <Text style={[commonStyles.textSecondary, { marginTop: 8, textAlign: 'center', fontSize: 14 }]}>
+                Find other Falcon users across all devices
               </Text>
             </View>
           )}

@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { commonStyles, buttonStyles, colors } from '../../styles/commonStyles';
 import Button from '../../components/Button';
 import TextInput from '../../components/TextInput';
-import { storage } from '../../data/storage';
+import { supabaseService } from '../../services/supabaseService';
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
@@ -13,7 +13,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    console.log('Login attempt:', { username });
+    console.log('Login attempt:', username);
     
     if (!username.trim() || !password.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
@@ -23,15 +23,15 @@ export default function LoginScreen() {
     setLoading(true);
     
     try {
-      const user = storage.loginUser(username.trim(), password);
+      const user = await supabaseService.loginUser(username.trim(), password);
       
       if (user) {
-        console.log('Login successful, navigating to main app');
-        router.replace('/main');
+        console.log('Login successful:', user.username);
+        router.replace('/main/channels');
       } else {
         Alert.alert('Error', 'Invalid username or password');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
       Alert.alert('Error', 'Login failed. Please try again.');
     } finally {
@@ -48,14 +48,14 @@ export default function LoginScreen() {
         <View style={[commonStyles.content, commonStyles.center]}>
           <View style={{ width: '100%', maxWidth: 400 }}>
             <Text style={[commonStyles.title, { textAlign: 'center', marginBottom: 8 }]}>
-              Welcome to Falcon
+              Welcome Back
             </Text>
             <Text style={[commonStyles.textSecondary, { textAlign: 'center', marginBottom: 40 }]}>
-              Sign in to continue
+              Sign in to Falcon
             </Text>
 
             <TextInput
-              placeholder="Username (e.g., @john_doe)"
+              placeholder="Username"
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -71,9 +71,10 @@ export default function LoginScreen() {
 
             <View style={commonStyles.buttonContainer}>
               <Button
-                text={loading ? "Signing in..." : "Sign In"}
+                text={loading ? "Signing In..." : "Sign In"}
                 onPress={handleLogin}
                 style={buttonStyles.primary}
+                disabled={loading}
               />
               
               <Button
@@ -81,13 +82,9 @@ export default function LoginScreen() {
                 onPress={() => router.push('/auth/register')}
                 style={buttonStyles.secondary}
                 textStyle={{ color: colors.primary }}
+                disabled={loading}
               />
             </View>
-
-            <Text style={[commonStyles.textSecondary, { textAlign: 'center', marginTop: 20 }]}>
-              Demo accounts: @john_doe, @jane_smith, @bob_wilson{'\n'}
-              Password: password123
-            </Text>
           </View>
         </View>
       </ScrollView>

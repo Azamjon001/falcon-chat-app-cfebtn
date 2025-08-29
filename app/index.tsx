@@ -1,32 +1,24 @@
 
-import React, { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { useEffect } from 'react';
 import { router } from 'expo-router';
+import { View, Text } from 'react-native';
 import { commonStyles } from '../styles/commonStyles';
-import { storage } from '../data/storage';
+import { supabaseService } from '../services/supabaseService';
 
-export default function IndexScreen() {
-  const [isReady, setIsReady] = useState(false);
-
+export default function Index() {
   useEffect(() => {
-    console.log('App starting, checking authentication');
+    // Check if user is already logged in
+    const currentUser = supabaseService.getCurrentUser();
     
-    // Add a small delay to ensure the layout is mounted
-    const timer = setTimeout(() => {
-      // Check if user is already logged in
-      const currentUser = storage.getCurrentUser();
-      
+    setTimeout(() => {
       if (currentUser) {
-        console.log('User already logged in:', currentUser.username);
-        router.replace('/main');
+        console.log('User already logged in, redirecting to channels');
+        router.replace('/main/channels');
       } else {
         console.log('No user logged in, redirecting to login');
         router.replace('/auth/login');
       }
-      setIsReady(true);
-    }, 100);
-
-    return () => clearTimeout(timer);
+    }, 1000);
   }, []);
 
   return (
