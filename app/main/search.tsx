@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import TextInput from '../../components/TextInput';
 import Icon from '../../components/Icon';
 import { supabaseService } from '../../services/supabaseService';
 import { User } from '../../types/User';
+import { router } from 'expo-router';
 
 export default function SearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,9 +36,23 @@ export default function SearchScreen() {
     }
   };
 
-  const handleUserPress = (user: User) => {
+  const handleUserPress = async (user: User) => {
     console.log('User selected:', user.username);
-    // TODO: Implement direct messaging or user profile view
+    
+    try {
+      // Create or get existing direct chat
+      const chatId = await supabaseService.createDirectChat(user.id);
+      
+      if (chatId) {
+        console.log('Navigating to direct chat:', chatId);
+        router.push(`/chat/${chatId}`);
+      } else {
+        Alert.alert('Error', 'Failed to create direct message');
+      }
+    } catch (error) {
+      console.error('Error creating direct chat:', error);
+      Alert.alert('Error', 'Failed to start conversation');
+    }
   };
 
   return (
@@ -115,7 +130,12 @@ export default function SearchScreen() {
                     {user.username}
                   </Text>
                 </View>
-                <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+                <View style={{ alignItems: 'center' }}>
+                  <Icon name="chatbubble-outline" size={20} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontSize: 12, marginTop: 2 }}>
+                    Message
+                  </Text>
+                </View>
               </View>
             </TouchableOpacity>
           ))}
@@ -127,7 +147,7 @@ export default function SearchScreen() {
                 Search for users by username or name
               </Text>
               <Text style={[commonStyles.textSecondary, { marginTop: 8, textAlign: 'center', fontSize: 14 }]}>
-                Find other Falcon users across all devices
+                Find other Falcon users and start conversations
               </Text>
             </View>
           )}

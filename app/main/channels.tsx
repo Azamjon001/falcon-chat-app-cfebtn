@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { router } from 'expo-router';
 import { commonStyles, colors } from '../../styles/commonStyles';
-import Button from '../../components/Button';
-import Icon from '../../components/Icon';
-import PromptModal from '../../components/PromptModal';
-import { Channel } from '../../types/User';
 import { supabaseService } from '../../services/supabaseService';
+import { router } from 'expo-router';
+import PromptModal from '../../components/PromptModal';
+import Icon from '../../components/Icon';
+import Button from '../../components/Button';
+import { Channel } from '../../types/User';
 
 export default function ChannelsScreen() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -21,6 +21,7 @@ export default function ChannelsScreen() {
   const loadChannels = async () => {
     console.log('Loading channels...');
     setLoading(true);
+    
     try {
       const channelList = await supabaseService.getChannels();
       setChannels(channelList);
@@ -37,17 +38,15 @@ export default function ChannelsScreen() {
   };
 
   const handleCreateChannelConfirm = async (channelName: string) => {
-    if (!channelName.trim()) {
-      return;
-    }
-
+    if (!channelName.trim()) return;
+    
     console.log('Creating channel:', channelName);
     
     try {
-      const newChannel = await supabaseService.createChannel(channelName.trim());
-      if (newChannel) {
-        setChannels(prev => [...prev, newChannel]);
-        console.log('Channel created successfully:', newChannel.name);
+      const channel = await supabaseService.createChannel(channelName.trim());
+      if (channel) {
+        setChannels(prev => [channel, ...prev]);
+        console.log('Channel created successfully');
       }
     } catch (error) {
       console.error('Error creating channel:', error);
@@ -65,24 +64,23 @@ export default function ChannelsScreen() {
     router.push(`/chat/${channel.id}`);
   };
 
+  const isDirectMessage = (channel: Channel) => {
+    return channel.description?.includes('Direct message with') || false;
+  };
+
+  const regularChannels = channels.filter(c => !isDirectMessage(c));
+  const directMessages = channels.filter(c => isDirectMessage(c));
+
   return (
     <View style={commonStyles.container}>
       <View style={[commonStyles.content, { paddingTop: 60 }]}>
         <View style={commonStyles.row}>
           <Text style={commonStyles.title}>Channels</Text>
-          <TouchableOpacity
+          <Button
+            title="Create"
             onPress={handleCreateChannel}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: colors.primary,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Icon name="add" size={20} color="white" />
-          </TouchableOpacity>
+            style={{ paddingHorizontal: 16, paddingVertical: 8 }}
+          />
         </View>
 
         <ScrollView style={commonStyles.flex1} showsVerticalScrollIndicator={false}>
@@ -99,52 +97,95 @@ export default function ChannelsScreen() {
                 No channels yet
               </Text>
               <Text style={[commonStyles.textSecondary, { marginTop: 8, textAlign: 'center', fontSize: 14 }]}>
-                Create your first channel to start chatting
+                Create your first channel or search for users to start messaging
               </Text>
-              <Button
-                text="Create Channel"
-                onPress={handleCreateChannel}
-                style={[commonStyles.buttonSecondary, { marginTop: 20 }]}
-                textStyle={{ color: colors.primary }}
-              />
             </View>
           )}
 
-          {channels.map((channel) => (
-            <TouchableOpacity
-              key={channel.id}
-              style={commonStyles.card}
-              onPress={() => handleChannelPress(channel)}
-              activeOpacity={0.7}
-            >
-              <View style={commonStyles.row}>
-                <View style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor: colors.primary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Icon name="chatbubbles" size={20} color="white" />
-                </View>
-                <View style={commonStyles.flex1}>
-                  <Text style={[commonStyles.text, { fontWeight: '600' }]}>
-                    {channel.name}
-                  </Text>
-                  {channel.description && (
-                    <Text style={commonStyles.textSecondary}>
-                      {channel.description}
-                    </Text>
-                  )}
-                  <Text style={[commonStyles.textSecondary, { fontSize: 12, marginTop: 2 }]}>
-                    {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-                <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
-              </View>
-            </TouchableOpacity>
-          ))}
+          {/* Regular Channels */}
+          {regularChannels.length > 0 && (
+            <>
+              <Text style={[commonStyles.text, { fontWeight: '600', marginTop: 16, marginBottom: 8 }]}>
+                Channels
+              </Text>
+              {regularChannels.map((channel) => (
+                <TouchableOpacity
+                  key={channel.id}
+                  style={commonStyles.card}
+                  onPress={() => handleChannelPress(channel)}
+                  activeOpacity={0.7}
+                >
+                  <View style={commonStyles.row}>
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Icon name="chatbubbles" size={20} color="white" />
+                    </View>
+                    <View style={commonStyles.flex1}>
+                      <Text style={[commonStyles.text, { fontWeight: '600' }]}>
+                        {channel.name}
+                      </Text>
+                      {channel.description && (
+                        <Text style={commonStyles.textSecondary}>
+                          {channel.description}
+                        </Text>
+                      )}
+                      <Text style={[commonStyles.textSecondary, { fontSize: 12 }]}>
+                        {channel.members.length} member{channel.members.length !== 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
+          {/* Direct Messages */}
+          {directMessages.length > 0 && (
+            <>
+              <Text style={[commonStyles.text, { fontWeight: '600', marginTop: 24, marginBottom: 8 }]}>
+                Direct Messages
+              </Text>
+              {directMessages.map((channel) => (
+                <TouchableOpacity
+                  key={channel.id}
+                  style={commonStyles.card}
+                  onPress={() => handleChannelPress(channel)}
+                  activeOpacity={0.7}
+                >
+                  <View style={commonStyles.row}>
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: colors.secondary || colors.cardBackground,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>
+                        {channel.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={commonStyles.flex1}>
+                      <Text style={[commonStyles.text, { fontWeight: '600' }]}>
+                        {channel.name}
+                      </Text>
+                      <Text style={commonStyles.textSecondary}>
+                        Direct message
+                      </Text>
+                    </View>
+                    <Icon name="chevron-forward" size={20} color={colors.textSecondary} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
         </ScrollView>
       </View>
 

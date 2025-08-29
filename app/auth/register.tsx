@@ -1,27 +1,80 @@
 
 import React, { useState } from 'react';
 import { View, Text, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { router } from 'expo-router';
 import { commonStyles, buttonStyles, colors } from '../../styles/commonStyles';
+import { supabaseService } from '../../services/supabaseService';
+import { router } from 'expo-router';
 import Button from '../../components/Button';
 import TextInput from '../../components/TextInput';
-import { supabaseService } from '../../services/supabaseService';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleRegister = async () => {
+    if (!name.trim() || !username.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
+    }
+
+    console.log('Registration attempt:', { 
+      name: name.trim(), 
+      username: username.trim() 
+    });
+    setLoading(true);
+
+    try {
+      // Check if username is unique first
+      const formattedUsername = username.startsWith('@') ? username : `@${username}`;
+      const isUnique = await supabaseService.isUsernameUnique(formattedUsername);
+      
+      if (!isUnique) {
+        Alert.alert('Error', 'This username is already taken. Please choose a different one.');
+        setLoading(false);
+        return;
+      }
+
+      const user = await supabaseService.createUser(name.trim(), username.trim(), password.trim());
+      
+      console.log('Registration successful:', user.username);
+      Alert.alert(
+        'Success', 
+        `Account created successfully! Welcome to Falcon, ${user.name}!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/auth/login')
+          }
+        ]
+      );
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      
+      if (error.message?.includes('already exists')) {
+        Alert.alert('Error', 'This username is already taken. Please choose a different one.');
+      } else {
+        Alert.alert('Error', error.message || 'Registration failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDebugShowUsers = async () => {
     try {
       const users = await supabaseService.getAllUsers();
-      const userList = users.map(u => `${u.username} (${u.name})`).join('\n');
-      Alert.alert('Debug: All Users', userList || 'No users found');
+      const userList = users.map(u => `${u.name} (${u.username})`).join('\n');
+      Alert.alert('All Users', userList || 'No users found');
     } catch (error) {
-      console.error('Debug error:', error);
-      Alert.alert('Debug Error', 'Failed to fetch users');
+      console.error('Error fetching users:', error);
+      Alert.alert('Error', 'Failed to fetch users');
     }
   };
 
@@ -43,146 +96,88 @@ export default function RegisterScreen() {
     );
   };
 
-  const handleRegister = async () => {
-    console.log('Registration attempt:', { name, username });
-    
-    if (!name.trim() || !username.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
-      return;
-    }
-
-    const formattedUsername = username.startsWith('@') ? username : `@${username}`;
-    
-    setLoading(true);
-    
-    try {
-      console.log('Checking username uniqueness for:', formattedUsername);
-      
-      // Check if username is unique
-      const isUnique = await supabaseService.isUsernameUnique(formattedUsername);
-      console.log('Username uniqueness result:', isUnique);
-      
-      if (!isUnique) {
-        console.log('Username is already taken:', formattedUsername);
-        Alert.alert('Error', 'This username is already taken. Please choose a different one.');
-        return;
-      }
-
-      console.log('Creating user with unique username:', formattedUsername);
-      const user = await supabaseService.createUser(name.trim(), formattedUsername, password);
-      
-      if (user) {
-        console.log('Registration successful:', user.username);
-        Alert.alert(
-          'Success', 
-          'Account created successfully! You can now sign in.',
-          [{ text: 'OK', onPress: () => router.replace('/auth/login') }]
-        );
-      }
-    } catch (error: any) {
-      console.error('Registration error:', error);
-      const errorMessage = error.message || 'Registration failed. Please try again.';
-      
-      // Show more specific error messages
-      if (errorMessage.includes('Username already exists')) {
-        Alert.alert('Error', 'This username is already taken. Please choose a different one.');
-      } else if (errorMessage.includes('Failed to check username')) {
-        Alert.alert('Error', 'Unable to verify username availability. Please check your connection and try again.');
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <KeyboardAvoidingView 
       style={commonStyles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-        <View style={[commonStyles.content, commonStyles.center]}>
-          <View style={{ width: '100%', maxWidth: 400 }}>
-            <Text style={[commonStyles.title, { textAlign: 'center', marginBottom: 8 }]}>
-              Create Account
-            </Text>
-            <Text style={[commonStyles.textSecondary, { textAlign: 'center', marginBottom: 40 }]}>
-              Join Falcon today
-            </Text>
+      <ScrollView contentContainerStyle={commonStyles.content} showsVerticalScrollIndicator={false}>
+        <View style={commonStyles.center}>
+          <Text style={[commonStyles.title, { marginBottom: 8 }]}>Create Account</Text>
+          <Text style={[commonStyles.textSecondary, { textAlign: 'center', marginBottom: 40 }]}>
+            Join Falcon and start messaging
+          </Text>
+        </View>
 
-            <TextInput
-              placeholder="Full Name"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
+        <View style={{ marginBottom: 16 }}>
+          <TextInput
+            placeholder="Full Name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+            autoComplete="name"
+          />
+        </View>
 
-            <TextInput
-              placeholder="Username (e.g., john_doe)"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+        <View style={{ marginBottom: 16 }}>
+          <TextInput
+            placeholder="Username (e.g., john or @john)"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="username"
+          />
+        </View>
 
-            <TextInput
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+        <View style={{ marginBottom: 32 }}>
+          <TextInput
+            placeholder="Password (min 6 characters)"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="password"
+          />
+        </View>
 
-            <TextInput
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-            />
+        <Button
+          title={loading ? "Creating Account..." : "Create Account"}
+          onPress={handleRegister}
+          disabled={loading}
+          style={buttonStyles.primary}
+        />
 
-            <View style={commonStyles.buttonContainer}>
-              <Button
-                text={loading ? "Creating Account..." : "Create Account"}
-                onPress={handleRegister}
-                style={buttonStyles.primary}
-                disabled={loading}
-              />
-              
-              <Button
-                text="Back to Sign In"
-                onPress={() => router.back()}
-                style={buttonStyles.secondary}
-                textStyle={{ color: colors.primary }}
-                disabled={loading}
-              />
+        <View style={[commonStyles.row, { marginTop: 24, justifyContent: 'center' }]}>
+          <Text style={commonStyles.textSecondary}>Already have an account? </Text>
+          <Button
+            title="Sign In"
+            onPress={() => router.push('/auth/login')}
+            style={{ backgroundColor: 'transparent' }}
+            textStyle={{ color: colors.primary }}
+          />
+        </View>
 
-              {/* Debug buttons - remove in production */}
-              <View style={{ marginTop: 20, opacity: 0.5 }}>
-                <Button
-                  text="Debug: Show All Users"
-                  onPress={handleDebugShowUsers}
-                  style={[buttonStyles.secondary, { marginBottom: 8 }]}
-                  textStyle={{ color: colors.textSecondary, fontSize: 12 }}
-                />
-                <Button
-                  text="Debug: Clear All Data"
-                  onPress={handleDebugClearData}
-                  style={buttonStyles.secondary}
-                  textStyle={{ color: colors.error, fontSize: 12 }}
-                />
-              </View>
-            </View>
-          </View>
+        {/* Debug Tools */}
+        <View style={{ marginTop: 40, gap: 8 }}>
+          <Button
+            title="Debug: Show All Users"
+            onPress={handleDebugShowUsers}
+            style={{ backgroundColor: colors.cardBackground }}
+            textStyle={{ color: colors.text, fontSize: 12 }}
+          />
+          <Button
+            title="Debug: Clear All Data"
+            onPress={handleDebugClearData}
+            style={{ backgroundColor: '#ff4444' }}
+            textStyle={{ color: 'white', fontSize: 12 }}
+          />
+        </View>
+
+        {/* Info */}
+        <View style={{ marginTop: 16, padding: 16, backgroundColor: colors.cardBackground, borderRadius: 8 }}>
+          <Text style={[commonStyles.textSecondary, { fontSize: 12, textAlign: 'center' }]}>
+            Usernames are unique across all devices. The @ symbol will be added automatically if not provided.
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

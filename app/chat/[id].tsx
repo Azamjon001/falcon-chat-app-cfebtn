@@ -5,11 +5,10 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { commonStyles, colors } from '../../styles/commonStyles';
 import TextInput from '../../components/TextInput';
 import Icon from '../../components/Icon';
-import ImagePickerButton from '../../components/ImagePicker';
+import FilePicker from '../../components/FilePicker';
 import VoiceRecorder from '../../components/VoiceRecorder';
 import { Message, Channel } from '../../types/User';
 import { supabaseService } from '../../services/supabaseService';
-import * as DocumentPicker from 'expo-document-picker';
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +25,7 @@ export default function ChatScreen() {
       const channels = await supabaseService.getChannels();
       const foundChannel = channels.find(c => c.id === id);
       setChannel(foundChannel || null);
+      console.log('Channel found:', foundChannel?.name);
     } catch (error) {
       console.error('Error loading channel data:', error);
     }
@@ -64,10 +64,15 @@ export default function ChatScreen() {
     setSending(true);
 
     try {
+      console.log('Sending text message:', messageContent);
       const message = await supabaseService.sendMessage(id, messageContent, 'text');
       if (message) {
         setMessages(prev => [...prev, message]);
         scrollToBottom();
+        console.log('Text message sent successfully');
+      } else {
+        console.error('Failed to send text message - no message returned');
+        Alert.alert('Error', 'Failed to send message');
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -93,6 +98,10 @@ export default function ChatScreen() {
       if (message) {
         setMessages(prev => [...prev, message]);
         scrollToBottom();
+        console.log('Voice message sent successfully');
+      } else {
+        console.error('Failed to send voice message - no message returned');
+        Alert.alert('Error', 'Failed to send voice message');
       }
     } catch (error) {
       console.error('Error sending voice message:', error);
@@ -102,59 +111,40 @@ export default function ChatScreen() {
     }
   };
 
-  const handleImageSelected = async (uri: string) => {
+  const handleFileSelected = async (
+    uri: string, 
+    type: 'image' | 'file', 
+    options?: {
+      fileName?: string;
+      fileSize?: number;
+      mimeType?: string;
+    }
+  ) => {
     if (!id) return;
 
-    console.log('Image selected:', uri);
+    console.log('File selected:', { uri, type, options });
     setSending(true);
 
     try {
-      const message = await supabaseService.sendMessage(id, 'Image', 'image', {
+      const content = type === 'image' ? 'Image' : (options?.fileName || 'File');
+      const message = await supabaseService.sendMessage(id, content, type, {
         fileUri: uri,
-        mimeType: 'image/jpeg'
+        fileName: options?.fileName,
+        fileSize: options?.fileSize,
+        mimeType: options?.mimeType
       });
       
       if (message) {
         setMessages(prev => [...prev, message]);
         scrollToBottom();
+        console.log(`${type} sent successfully`);
+      } else {
+        console.error(`Failed to send ${type} - no message returned`);
+        Alert.alert('Error', `Failed to send ${type}`);
       }
     } catch (error) {
-      console.error('Error sending image:', error);
-      Alert.alert('Error', 'Failed to send image');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleFileShare = async () => {
-    if (!id) return;
-
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const file = result.assets[0];
-        console.log('File selected:', file);
-        setSending(true);
-
-        const message = await supabaseService.sendMessage(id, file.name, 'file', {
-          fileUri: file.uri,
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.mimeType || 'application/octet-stream'
-        });
-        
-        if (message) {
-          setMessages(prev => [...prev, message]);
-          scrollToBottom();
-        }
-      }
-    } catch (error) {
-      console.error('Error sharing file:', error);
-      Alert.alert('Error', 'Failed to share file');
+      console.error(`Error sending ${type}:`, error);
+      Alert.alert('Error', `Failed to send ${type}`);
     } finally {
       setSending(false);
     }
@@ -357,34 +347,10 @@ export default function ChatScreen() {
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <ImagePickerButton
-            onImageSelected={handleImageSelected}
-            icon="camera-outline"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}
+          <FilePicker
+            onFileSelected={handleFileSelected}
+            style={{ marginRight: 8 }}
           />
-
-          <TouchableOpacity
-            onPress={handleFileShare}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: colors.cardBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: 8,
-            }}
-          >
-            <Icon name="attach-outline" size={20} color={colors.text} />
-          </TouchableOpacity>
 
           <VoiceRecorder
             onRecordingComplete={handleVoiceRecordingComplete}
